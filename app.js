@@ -310,6 +310,7 @@ try {
 loadYouTube().catch(() => { ytFailed = true; });
 
 // Full screen, with a button to tuck the menus away.
+const isAppleTouch = /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 const fullButton = document.querySelector('#fullscreen');
 const hideButton = document.querySelector('#hide-menus');
 function setMenusHidden(hidden) {
@@ -320,12 +321,19 @@ function setMenusHidden(hidden) {
 function setFull(on) {
   document.body.classList.toggle('is-full', on);
   fullButton.setAttribute('aria-pressed', String(on));
+  if (!on && isAppleTouch) setMenusHidden(false);
 }
-// Safari on iPad leaves real full screen whenever the keyboard opens or the page is touched,
-// so iPad and iPhone get the in-page focus view instead.
-const isAppleTouch = /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+// Safari on iPad leaves real full screen as soon as the keyboard opens, so writing on iPad and
+// iPhone uses an in-page focus view; the board (no keyboard) still uses real full screen.
 fullButton.addEventListener('click', async () => {
-  if (isAppleTouch) { setFull(!document.body.classList.contains('is-full')); return; }
+  // iPad writing: a focus view that tucks every menu away (the eye button brings them back).
+  if (isAppleTouch && document.body.dataset.mode !== 'board') {
+    const on = !document.body.classList.contains('is-full');
+    setFull(on);
+    setMenusHidden(on);
+    if (on) { window.scrollTo(0, 0); focusEditor(); }
+    return;
+  }
   const root = document.documentElement;
   const enter = root.requestFullscreen || root.webkitRequestFullscreen;
   const exit = document.exitFullscreen || document.webkitExitFullscreen;
@@ -741,6 +749,7 @@ function setMode(mode) {
   boardSection.hidden = mode !== 'board';
   try { localStorage.setItem('zen-mode', mode); } catch {}
   if (mode === 'board') board.open(); else focusEditor();
+  if (isAppleTouch && mode === 'board' && document.body.classList.contains('is-full') && !document.fullscreenElement && !document.webkitFullscreenElement) setFull(false);
 }
 modeButtons.forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
 document.querySelector('#board-hide').addEventListener('click', (e) => {
@@ -782,6 +791,17 @@ const board = (() => {
   let penSeen = false;
   try { penSeen = localStorage.getItem('zen-pen') === '1'; } catch {}
   let liveFrame = null;
+  let pressureOn = true;
+  try { pressureOn = localStorage.getItem('zen-pressure') !== 'off'; } catch {}
+  const pressureButton = document.querySelector('#board-pressure');
+  const showPressure = () => { pressureButton.setAttribute('aria-pressed', String(pressureOn)); pressureButton.title = `Pencil pressure: ${pressureOn ? 'on' : 'off'}`; };
+  showPressure();
+  pressureButton.addEventListener('click', () => {
+    pressureOn = !pressureOn;
+    try { localStorage.setItem('zen-pressure', pressureOn ? 'on' : 'off'); } catch {}
+    showPressure();
+    status.textContent = `Pencil pressure ${pressureOn ? 'on' : 'off'}`;
+  });
   const bitmaps = new Map();
   const textNodes = new Map();
   let pinch = null;
@@ -894,6 +914,38 @@ const board = (() => {
     canvas.height = Math.round(canvas.clientHeight * dpr);
     draw();
   }
+  // Pencil pressure (0–1) scales the line: a light touch is thin, a firm one about twice the base width.
+  const pressureWidth = (w, pr) => w * (.25 + 1.5 * Math.min(1, Math.max(0, pr)));
+  // Draws a pressure stroke segment by segment, using the same midpoint curves as plain strokes.
+  // `from`/`start` let the live renderer continue where it stopped; returns the new position.
+  function drawPressure(c, it, from, start) {
+    const p = it.pts, pr = it.pr, n = p.length / 2;
+    if (n === 1) {
+      c.fillStyle = c.strokeStyle;
+      c.beginPath();
+      c.arc(p[0], p[1], pressureWidth(it.w, pr[0]) / 2, 0, Math.PI * 2);
+      c.fill();
+      return {j: 1, x: p[0], y: p[1]};
+    }
+    let j = Math.max(1, from), x = start ? start.x : p[0], y = start ? start.y : p[1];
+    for (; j < n - 1; j++) {
+      const mx = (p[j * 2] + p[j * 2 + 2]) / 2, my = (p[j * 2 + 1] + p[j * 2 + 3]) / 2;
+      c.lineWidth = pressureWidth(it.w, (pr[j - 1] + pr[j]) / 2);
+      c.beginPath();
+      c.moveTo(x, y);
+      c.quadraticCurveTo(p[j * 2], p[j * 2 + 1], mx, my);
+      c.stroke();
+      x = mx; y = my;
+    }
+    if (!start) { // finished stroke: close with the last point
+      c.lineWidth = pressureWidth(it.w, pr[n - 1]);
+      c.beginPath();
+      c.moveTo(x, y);
+      c.lineTo(p[n * 2 - 2], p[n * 2 - 1]);
+      c.stroke();
+    }
+    return {j, x, y};
+  }
   function drawItem(c, it, colors) {
     const k = kind(it);
     if (k === 'text') return; // drawn as live HTML on top of the canvas
@@ -923,6 +975,7 @@ const board = (() => {
     }
     c.strokeStyle = colors[it.c] || colors.ink;
     c.lineWidth = it.w;
+    if (k === 's' && it.pr) { drawPressure(c, it, 0, null); return; }
     c.beginPath();
     if (k === 's') {
       const p = it.pts;
@@ -1028,7 +1081,7 @@ const board = (() => {
     for (const it of items) if (kind(it) !== 'conn') drawItem(ctx, it, colors);
     if (current) {
       drawItem(ctx, current, colors);
-      if (current.pts) { const n = current.pts.length; current.mid = {x: current.pts[n - 2], y: current.pts[n - 1]}; current.next = n; }
+      if (current.pts) { const n = current.pts.length; current.mid = {x: current.pts[n - 2], y: current.pts[n - 1]}; current.next = current.pr ? n - 2 : n; }
     }
     if (current?.t === 'conn' && current.hover) {
       const b = bounds(current.hover), m = 6 / view.z;
@@ -1071,6 +1124,12 @@ const board = (() => {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = palette()[current.c] || palette().ink;
+    if (current.pr) {
+      const r = drawPressure(ctx, current, current.next / 2, current.mid);
+      current.next = r.j * 2;
+      current.mid = {x: r.x, y: r.y};
+      return;
+    }
     ctx.lineWidth = current.w;
     ctx.beginPath();
     ctx.moveTo(current.mid.x, current.mid.y);
@@ -1218,7 +1277,10 @@ const board = (() => {
       return;
     }
     if (shapes.includes(tool)) current = {t: tool, k: newKey(), c: color, w: sizes[size][1], x1: p.x, y1: p.y, x2: p.x, y2: p.y};
-    else current = {c: color, w: sizes[size][1], pts: [+p.x.toFixed(2), +p.y.toFixed(2)]};
+    else {
+      current = {c: color, w: sizes[size][1], pts: [+p.x.toFixed(2), +p.y.toFixed(2)]};
+      if (e.pointerType === 'pen' && pressureOn && e.pressure > 0) current.pr = [+e.pressure.toFixed(3)];
+    }
     redraw();
   });
   canvas.addEventListener('dblclick', (e) => {
@@ -1297,7 +1359,13 @@ const board = (() => {
     for (const ev of coalesced.length ? coalesced : [e]) {
       const q = toWorld(ev.clientX - r.left, ev.clientY - r.top);
       const n = current.pts.length;
-      if (Math.hypot(q.x - current.pts[n - 2], q.y - current.pts[n - 1]) > .35 / view.z) current.pts.push(+q.x.toFixed(2), +q.y.toFixed(2));
+      if (Math.hypot(q.x - current.pts[n - 2], q.y - current.pts[n - 1]) > .35 / view.z) {
+        current.pts.push(+q.x.toFixed(2), +q.y.toFixed(2));
+        if (current.pr) {
+          const last = current.pr[current.pr.length - 1], raw = ev.pressure > 0 ? ev.pressure : last;
+          current.pr.push(+(last + (raw - last) * .45).toFixed(3));
+        }
+      }
     }
     redrawLive();
   });
@@ -1520,6 +1588,18 @@ const board = (() => {
         parts.unshift(`<path d="${connSVGPath(g, it.w)}" ${st}/>`);
       } else if (k === 'text') parts.push(textSVG(it));
       else if (k === 'img') parts.push(`<image href="${await loadImage(it.id)}" x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" preserveAspectRatio="none"/>`);
+      else if (k === 's' && it.pr) {
+        const p = it.pts, pr = it.pr, n = p.length / 2, segs = [];
+        let x = p[0], y = p[1];
+        if (n === 1) segs.push(`<circle cx="${x}" cy="${y}" r="${pressureWidth(it.w, pr[0]) / 2}" fill="${col}"/>`);
+        for (let j = 1; j < n; j++) {
+          const end = j < n - 1 ? [(p[j * 2] + p[j * 2 + 2]) / 2, (p[j * 2 + 1] + p[j * 2 + 3]) / 2] : [p[j * 2], p[j * 2 + 1]];
+          const d = j < n - 1 ? `M${x} ${y}Q${p[j * 2]} ${p[j * 2 + 1]} ${end[0]} ${end[1]}` : `M${x} ${y}L${end[0]} ${end[1]}`;
+          segs.push(`<path d="${d}" fill="none" stroke="${col}" stroke-width="${pressureWidth(it.w, (pr[j - 1] + pr[j]) / 2).toFixed(2)}" stroke-linecap="round"/>`);
+          [x, y] = end;
+        }
+        parts.push(`<g>${segs.join('')}</g>`);
+      }
       else if (k === 's') { const p = it.pts; let d = `M${p[0]} ${p[1]}`; for (let i = 2; i < p.length; i += 2) d += `L${p[i]} ${p[i + 1]}`; if (p.length === 2) d += 'l.01 0'; parts.push(`<path d="${d}" ${st}/>`); }
       else {
         const {x1, y1, x2, y2} = it, x = Math.min(x1, x2), y = Math.min(y1, y2), w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
@@ -1570,7 +1650,7 @@ const board = (() => {
       if (!raw || typeof raw !== 'object') continue;
       const k = raw.t || 's', c = typeof raw.c === 'string' ? raw.c : 'ink', w = num(raw.w) ? raw.w : 2;
       const key = typeof raw.k === 'string' && /^[\w-]{1,40}$/.test(raw.k) ? raw.k : newKey();
-      if (k === 's' && Array.isArray(raw.pts) && raw.pts.length >= 2 && raw.pts.every(num)) next.push({c, w, pts: raw.pts});
+      if (k === 's' && Array.isArray(raw.pts) && raw.pts.length >= 2 && raw.pts.every(num)) next.push({c, w, pts: raw.pts, ...(Array.isArray(raw.pr) && raw.pr.length * 2 === raw.pts.length && raw.pr.every(num) ? {pr: raw.pr} : {})});
       else if (shapes.includes(k) && [raw.x1, raw.y1, raw.x2, raw.y2].every(num)) next.push({t: k, k: key, c, w, x1: raw.x1, y1: raw.y1, x2: raw.x2, y2: raw.y2});
       else if (k === 'text' && typeof raw.md === 'string' && num(raw.x) && num(raw.y)) next.push({t: 'text', ...(raw.note === true ? {note: true} : {}), k: key, x: raw.x, y: raw.y, w: num(raw.w) ? raw.w : 340, md: raw.md, c});
       else if (k === 'img' && [raw.x, raw.y, raw.w, raw.h].every(num)) {

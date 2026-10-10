@@ -229,3 +229,4 @@ header{transition:opacity .8s ease,visibility .8s}
 #board,#board *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #board .board-text.editing,#board .board-text.editing *{-webkit-user-select:text;user-select:text}
 #board-canvas{-webkit-tap-highlight-color:transparent}
+#board-pressure[aria-pressed=true]{color:var(--ink);background:color-mix(in srgb,var(--ink) 9%,transparent)}
