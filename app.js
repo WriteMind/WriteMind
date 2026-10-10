@@ -1,4 +1,34 @@
 'use strict';
+// If anything fails while the page starts (for example Safari mixing a new page with an old cached
+// script), say so on screen instead of silently leaving buttons dead.
+window.addEventListener('error', (e) => {
+  const toast = document.querySelector('#toast');
+  if (!toast || !e.message || e.message === 'Script error.') return;
+  toast.textContent = `Something went wrong (${e.message}). Reloading the page usually fixes it.`;
+  toast.hidden = false;
+  setTimeout(() => { toast.hidden = true; }, 9000);
+});
+
+// Sounds: the Moodist ambient mixer (moodist.mvze.net) in a side panel. It loads on first open,
+// and closing the panel only hides it, so whatever is playing keeps playing.
+const soundsButton = document.querySelector('#sounds');
+const soundPanel = document.querySelector('#sound-panel');
+function setSoundPanel(open) {
+  if (open && !soundPanel.querySelector('iframe')) {
+    const frame = Object.assign(document.createElement('iframe'), {src: 'https://moodist.mvze.net/', title: 'Moodist ambient sounds', loading: 'eager'});
+    frame.allow = 'autoplay';
+    soundPanel.append(frame);
+  }
+  soundPanel.classList.toggle('open', open);
+  document.body.classList.toggle('sounds-open', open);
+  // The page and board change size, so text wrapping, the focus band and the canvas are re-measured.
+  window.dispatchEvent(new Event('resize'));
+  soundPanel.setAttribute('aria-hidden', String(!open));
+  soundsButton.setAttribute('aria-expanded', String(open));
+}
+soundsButton.addEventListener('click', () => setSoundPanel(!soundPanel.classList.contains('open')));
+document.querySelector('#sound-close').addEventListener('click', () => setSoundPanel(false));
+
 const writing = document.querySelector('#writing');
 const status = document.querySelector('#status');
 const fileInput = document.querySelector('#file');
@@ -109,26 +139,6 @@ document.querySelector('#save').addEventListener('click', async () => {
   persist();
   document.querySelector('#announcement').textContent = 'Markdown download started';
 });
-// Sounds: the Moodist ambient mixer (moodist.mvze.net) in a side panel. It loads on first open,
-// and closing the panel only hides it, so whatever is playing keeps playing.
-const soundsButton = document.querySelector('#sounds');
-const soundPanel = document.querySelector('#sound-panel');
-function setSoundPanel(open) {
-  if (open && !soundPanel.querySelector('iframe')) {
-    const frame = Object.assign(document.createElement('iframe'), {src: 'https://moodist.mvze.net/', title: 'Moodist ambient sounds', loading: 'eager'});
-    frame.allow = 'autoplay';
-    soundPanel.append(frame);
-  }
-  soundPanel.classList.toggle('open', open);
-  document.body.classList.toggle('sounds-open', open);
-  // The page and board change size, so text wrapping, the focus band and the canvas are re-measured.
-  window.dispatchEvent(new Event('resize'));
-  soundPanel.setAttribute('aria-hidden', String(!open));
-  soundsButton.setAttribute('aria-expanded', String(open));
-}
-soundsButton.addEventListener('click', () => setSoundPanel(!soundPanel.classList.contains('open')));
-document.querySelector('#sound-close').addEventListener('click', () => setSoundPanel(false));
-
 // Theme: auto (follows the device), light, dark or sepia.
 const themeSelect = document.querySelector('#theme');
 const themeMeta = document.querySelector('#theme-color');
