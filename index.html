@@ -9,7 +9,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Zen">
-  <meta name="description" content="A quiet place to write and sketch. Gentle music, live Markdown, pictures, and an endless whiteboard.">
+  <meta name="description" content="A quiet place to write and sketch. Live Markdown, pictures, and an endless whiteboard.">
   <title>Zen — a quiet place to write</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%237f9590' stroke-width='3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
@@ -30,9 +30,7 @@
         <button type="button" data-mode="board" aria-pressed="false">Board</button>
       </div>
       <nav aria-label="Writing tools">
-        <button id="audio" type="button" aria-pressed="false" title="Toggle music"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M8 15H6a4 4 0 0 1-.6-7.95A6 6 0 0 1 17 6a4.5 4.5 0 0 1 1 9h-2M9 18l-1 2m5-3-1 2m5-1-1 2"/></svg><span id="audio-label">Sound off</span></button>
-        <label class="sr-only" for="sound">Soundscape</label>
-        <select id="sound" title="Choose a soundscape"><option value="flute">Flute</option><option value="hangdrum">Hang drum</option><option value="rain" selected>Rain</option><option value="piano">Piano</option><option value="violin">Violin</option><option value="brownnoise">Brown noise</option></select>
+        <a id="sounds" class="nav-link" href="https://slonoise.com/mix/" target="_blank" rel="noopener noreferrer" title="Open the Slonoise sound mixer in a new tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M8 15H6a4 4 0 0 1-.6-7.95A6 6 0 0 1 17 6a4.5 4.5 0 0 1 1 9h-2M9 18l-1 2m5-3-1 2m5-1-1 2"/></svg>Sounds<span class="sr-only"> (opens slonoise.com in a new tab)</span></a>
         <span class="divider write-only" aria-hidden="true"></span>
         <label class="sr-only" for="restore">Restore a backup from a previous session</label>
         <select id="restore" class="write-only" title="Drafts from your last two sessions" hidden></select>
@@ -107,7 +105,6 @@
     <input id="board-image-file" type="file" accept="image/*" multiple hidden>
   </section>
   <footer><span id="count">0 words</span><span class="footer-center">Nothing to finish. Just a little space to begin.</span><span id="status" role="status" aria-live="polite">Draft stays on this device</span></footer>
-  <div id="yt" aria-hidden="true"></div>
   <div id="toast" role="status" hidden></div>
   <div class="sr-only" id="announcement" role="status" aria-live="polite"></div>
 </body>

@@ -45,8 +45,6 @@ footer{display:flex;justify-content:space-between;align-items:center;gap:20px;ma
 @media(prefers-reduced-motion:no-preference){
   button{transition:background .35s,color .35s}
   body.intro main{animation:rise .8s cubic-bezier(.2,.7,.2,1) both}
-  /* when music plays, the light glows a little brighter */
-  body:has(#audio[aria-pressed=true])::before,body:has(#audio[aria-pressed=true])::after{opacity:1}
   /* chrome fades while writing */
   header,footer{transition:opacity 1.2s ease}
   body:has(textarea:focus:not(:placeholder-shown)) header:not(:hover):not(:focus-within),
@@ -72,9 +70,8 @@ select{font:500 12px var(--sans);letter-spacing:.02em;color:var(--ink);backgroun
 select:hover{background-color:color-mix(in srgb,var(--ink) 6%,transparent)}
 select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 select option{color:var(--ink);background:var(--paper)}
-@media(max-width:650px){select{font-size:11px;padding:8px 22px 8px 8px;min-height:38px;background-position:right 7px center}#audio-label{display:none}}
+@media(max-width:650px){select{font-size:11px;padding:8px 22px 8px 8px;min-height:38px;background-position:right 7px center}}
 #fullscreen{padding:9px 11px}
-#yt{position:fixed;left:-9999px;top:0;width:200px;height:200px;pointer-events:none}
 body.is-full main{margin-top:40px}
 header,footer{transition:opacity .8s ease,visibility .8s}
 body.menus-hidden .brand,body.menus-hidden .modes,body.menus-hidden nav,body.menus-hidden footer,body.menus-hidden .page-heading,body.menus-hidden .board-tools{opacity:0!important;pointer-events:none;visibility:hidden}
@@ -187,7 +184,7 @@ header{transition:opacity .8s ease,visibility .8s}
   .board-tools{right:76px}
   #board-hide{right:12px;width:44px;height:44px}
 }
-@media print{header,footer,.page-heading,#board,#yt{display:none!important}main{margin:0;width:100%}body::before,body::after,html::after{display:none}}
+@media print{header,footer,.page-heading,#board{display:none!important}main{margin:0;width:100%}body::before,body::after,html::after{display:none}}
 
 /* ---------- equations ---------- */
 .math{white-space:nowrap}
@@ -259,3 +256,9 @@ header{transition:opacity .8s ease,visibility .8s}
 
 /* ---------- diagnostics panel (?debug) ---------- */
 #debug-panel{position:fixed;left:12px;top:84px;z-index:40;max-width:min(320px,calc(100vw - 24px));padding:8px 10px;border-radius:12px;background:var(--glass);border:1px solid var(--line);color:var(--ink);font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;box-shadow:0 12px 40px -16px rgba(20,30,40,.3);cursor:pointer}
+
+/* ---------- Sounds link ---------- */
+.nav-link{font:500 12px var(--sans);letter-spacing:.02em;color:var(--muted);text-decoration:none;border-radius:999px;min-height:40px;padding:9px 15px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.nav-link:hover{color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.nav-link svg{width:18px;height:18px}
+@media(max-width:650px){.nav-link{font-size:11px;padding:8px 10px;gap:5px;min-height:38px}}

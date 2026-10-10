@@ -1,10 +1,10 @@
 # Zen
 
-A quiet, mobile-friendly space to write Markdown and sketch. No build step, accounts or analytics. Formatting uses marked, DOMPurify, Turndown and KaTeX from public CDNs; sound uses the YouTube player.
+A quiet, mobile-friendly space to write Markdown and sketch. No build step, accounts or analytics. Formatting uses marked, DOMPurify, Turndown and KaTeX from public CDNs.
 
 - Write plain Markdown and download it with **Save .md**.
 - Use **Load .md** to open Markdown or text files.
-- Pick a soundscape (flute, hang drum, rain, piano, violin or brown noise). Each plays a long YouTube recording (via youtube-nocookie.com); if YouTube is blocked or offline, a gentle locally generated version plays instead.
+- **Sounds** opens the [Slonoise](https://slonoise.com/mix/) sound mixer in a new tab, so you can layer rain, noise and nature sounds while you write.
 - Drafts recover automatically in the same browser, when local storage is available. Download a Markdown file for a lasting backup.
 - Use the full screen button to write without distractions (on iPad, Safari may leave full screen when the keyboard opens — the focus view with hidden menus stays on until you press the button again; for full screen that never drops out, use Share → Add to Home Screen). The eye button beside the menu hides or shows the menus (Esc brings them back).
 - You write in formatted text by default (type `# ` for a heading, `- ` for a list, `**bold**`, Ctrl+B / Ctrl+I). **Code** shows the Markdown underneath. Equations: `$x^2$` inline, `$$ … $$` on their own lines. Undo / redo buttons sit beside the tools.
