@@ -109,6 +109,23 @@ document.querySelector('#save').addEventListener('click', async () => {
   persist();
   document.querySelector('#announcement').textContent = 'Markdown download started';
 });
+// Sounds: the Moodist ambient mixer (moodist.mvze.net) in a side panel. It loads on first open,
+// and closing the panel only hides it, so whatever is playing keeps playing.
+const soundsButton = document.querySelector('#sounds');
+const soundPanel = document.querySelector('#sound-panel');
+function setSoundPanel(open) {
+  if (open && !soundPanel.querySelector('iframe')) {
+    const frame = Object.assign(document.createElement('iframe'), {src: 'https://moodist.mvze.net/', title: 'Moodist ambient sounds', loading: 'eager'});
+    frame.allow = 'autoplay';
+    soundPanel.append(frame);
+  }
+  soundPanel.classList.toggle('open', open);
+  soundPanel.setAttribute('aria-hidden', String(!open));
+  soundsButton.setAttribute('aria-expanded', String(open));
+}
+soundsButton.addEventListener('click', () => setSoundPanel(!soundPanel.classList.contains('open')));
+document.querySelector('#sound-close').addEventListener('click', () => setSoundPanel(false));
+
 // Theme: auto (follows the device), light, dark or sepia.
 const themeSelect = document.querySelector('#theme');
 const themeMeta = document.querySelector('#theme-color');

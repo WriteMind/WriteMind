@@ -257,8 +257,14 @@ header{transition:opacity .8s ease,visibility .8s}
 /* ---------- diagnostics panel (?debug) ---------- */
 #debug-panel{position:fixed;left:12px;top:84px;z-index:40;max-width:min(320px,calc(100vw - 24px));padding:8px 10px;border-radius:12px;background:var(--glass);border:1px solid var(--line);color:var(--ink);font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;box-shadow:0 12px 40px -16px rgba(20,30,40,.3);cursor:pointer}
 
-/* ---------- Sounds link ---------- */
-.nav-link{font:500 12px var(--sans);letter-spacing:.02em;color:var(--muted);text-decoration:none;border-radius:999px;min-height:40px;padding:9px 15px;display:flex;align-items:center;gap:8px;white-space:nowrap}
-.nav-link:hover{color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent)}
-.nav-link svg{width:18px;height:18px}
-@media(max-width:650px){.nav-link{font-size:11px;padding:8px 10px;gap:5px;min-height:38px}}
+
+/* ---------- Sounds panel (Moodist) ---------- */
+.sound-panel{position:fixed;top:84px;right:16px;bottom:16px;z-index:25;width:min(420px,calc(100vw - 32px));display:flex;flex-direction:column;border-radius:18px;overflow:hidden;background:var(--paper);border:1px solid var(--line);box-shadow:0 24px 60px -24px rgba(20,30,40,.35);visibility:hidden;opacity:0;transform:translateX(12px);transition:opacity .25s,transform .25s,visibility .25s}
+.sound-panel.open{visibility:visible;opacity:1;transform:none}
+.sound-panel-bar{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 16px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+.sound-panel-bar a{color:var(--ink)}
+.sound-panel-hint{flex:1;font-size:11px;opacity:.8}
+.sound-panel-bar button{min-height:36px;padding:6px 10px}
+.sound-panel iframe{flex:1;width:100%;border:0;background:#fff}
+#sounds[aria-expanded=true]{color:var(--ink);background:color-mix(in srgb,var(--ink) 8%,transparent)}
+@media(max-width:650px){.sound-panel{top:auto;left:8px;right:8px;bottom:8px;width:auto;height:72dvh}.sound-panel-hint{display:none}}

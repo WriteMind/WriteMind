@@ -30,7 +30,7 @@
         <button type="button" data-mode="board" aria-pressed="false">Board</button>
       </div>
       <nav aria-label="Writing tools">
-        <a id="sounds" class="nav-link" href="https://slonoise.com/mix/" target="_blank" rel="noopener noreferrer" title="Open the Slonoise sound mixer in a new tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M8 15H6a4 4 0 0 1-.6-7.95A6 6 0 0 1 17 6a4.5 4.5 0 0 1 1 9h-2M9 18l-1 2m5-3-1 2m5-1-1 2"/></svg>Sounds<span class="sr-only"> (opens slonoise.com in a new tab)</span></a>
+        <button id="sounds" type="button" aria-expanded="false" aria-controls="sound-panel" title="Ambient sounds (Moodist)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M8 15H6a4 4 0 0 1-.6-7.95A6 6 0 0 1 17 6a4.5 4.5 0 0 1 1 9h-2M9 18l-1 2m5-3-1 2m5-1-1 2"/></svg>Sounds</button>
         <span class="divider write-only" aria-hidden="true"></span>
         <label class="sr-only" for="restore">Restore a backup from a previous session</label>
         <select id="restore" class="write-only" title="Drafts from your last two sessions" hidden></select>
@@ -106,6 +106,13 @@
   </section>
   <footer><span id="count">0 words</span><span class="footer-center">Nothing to finish. Just a little space to begin.</span><span id="status" role="status" aria-live="polite">Draft stays on this device</span></footer>
   <div id="toast" role="status" hidden></div>
+  <aside id="sound-panel" class="sound-panel" aria-label="Ambient sounds" aria-hidden="true">
+    <div class="sound-panel-bar">
+      <span>Sounds by <a href="https://moodist.mvze.net/" target="_blank" rel="noopener noreferrer">Moodist</a></span>
+      <span class="sound-panel-hint">Music keeps playing when this panel is closed.</span>
+      <button id="sound-close" type="button" title="Close (music keeps playing)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg><span class="sr-only">Close sounds</span></button>
+    </div>
+  </aside>
   <div class="sr-only" id="announcement" role="status" aria-live="polite"></div>
 </body>
 </html>
