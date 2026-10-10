@@ -985,10 +985,56 @@ const board = (() => {
     const keys = new Set(list.filter((x) => x.k).map((x) => x.k));
     return list.filter((x) => kind(x) !== 'conn' || (keys.has(x.a) && keys.has(x.b)));
   };
+  // Pencil strokes are drawn as one smooth filled outline (perfect-freehand, MIT), which keeps
+  // pressure changes round and even. The stroke being drawn lives on a separate clear layer.
+  const liveCanvas = document.querySelector('#board-live'), liveCtx = liveCanvas.getContext('2d');
+  let getStroke = null;
+  import('https://cdn.jsdelivr.net/npm/perfect-freehand@1.2.2/+esm').then((m) => { getStroke = m.getStroke; redraw(); }).catch(() => {});
+  const outlines = new WeakMap();
+  function outlinePoints(it, last = true) {
+    const p = it.pts, pr = it.pr, points = [];
+    for (let i = 0; i < p.length; i += 2) points.push([p[i], p[i + 1], pr[i / 2]]);
+    return getStroke(points, {size: it.w * 1.9, thinning: .6, smoothing: .6, streamline: .45, simulatePressure: false, last});
+  }
+  function outlinePath(it) {
+    if (!getStroke) return null;
+    if (it !== current && outlines.has(it)) return outlines.get(it);
+    const pts = outlinePoints(it, it !== current), path = new Path2D();
+    if (pts.length) {
+      path.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i <= pts.length; i++) {
+        const [x0, y0] = pts[i - 1], [x1, y1] = pts[i % pts.length];
+        path.quadraticCurveTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
+      }
+      path.closePath();
+    }
+    if (it !== current) outlines.set(it, path);
+    return path;
+  }
+  function outlineSVG(it) {
+    const pts = outlinePoints(it);
+    if (!pts.length) return '';
+    let d = `M${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)}`;
+    for (let i = 1; i <= pts.length; i++) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i % pts.length];
+      d += `Q${x0.toFixed(2)} ${y0.toFixed(2)} ${((x0 + x1) / 2).toFixed(2)} ${((y0 + y1) / 2).toFixed(2)}`;
+    }
+    return d + 'Z';
+  }
+  const onLiveLayer = (it) => Boolean(it?.pr && getStroke);
+  function clearLive() { liveCtx.setTransform(1, 0, 0, 1, 0, 0); liveCtx.clearRect(0, 0, liveCanvas.width, liveCanvas.height); }
+  function drawLiveLayer() {
+    clearLive();
+    if (!onLiveLayer(current)) return;
+    const dpr = window.devicePixelRatio || 1;
+    liveCtx.setTransform(dpr * view.z, 0, 0, dpr * view.z, dpr * view.x, dpr * view.y);
+    liveCtx.fillStyle = palette()[current.c] || palette().ink;
+    liveCtx.fill(outlinePath(current));
+  }
   function resize() {
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(canvas.clientWidth * dpr);
-    canvas.height = Math.round(canvas.clientHeight * dpr);
+    canvas.width = liveCanvas.width = Math.round(canvas.clientWidth * dpr);
+    canvas.height = liveCanvas.height = Math.round(canvas.clientHeight * dpr);
     draw();
   }
   // Pencil pressure (0–1) scales the line: a light touch is thin, a firm one about twice the base width.
@@ -1058,7 +1104,11 @@ const board = (() => {
     }
     c.strokeStyle = colors[it.c] || colors.ink;
     c.lineWidth = it.w;
-    if (k === 's' && it.pr) { drawPressure(c, it, 0, null); return; }
+    if (k === 's' && it.pr) {
+      const path = outlinePath(it);
+      if (path) { c.fillStyle = c.strokeStyle; c.fill(path); } else drawPressure(c, it, 0, null);
+      return;
+    }
     c.beginPath();
     if (k === 's') {
       const p = it.pts;
@@ -1146,6 +1196,7 @@ const board = (() => {
 
   function draw() {
     frame = null;
+    if (!current) clearLive();
     snapView = null;
     clearTimeout(settleTimer);
     const drawStart = debugOn ? performance.now() : 0;
@@ -1171,7 +1222,9 @@ const board = (() => {
     for (const it of items) if (kind(it) === 'conn') drawItem(ctx, it, colors);
     for (const it of items) if (kind(it) !== 'conn' && kind(it) !== 'text' && visible(it)) { drawItem(ctx, it, colors); drawn++; }
     shownView = {...view};
-    if (current) {
+    if (onLiveLayer(current)) drawLiveLayer();
+    else if (current) {
+      clearLive();
       drawItem(ctx, current, colors);
       if (current.pts) { const n = current.pts.length; current.mid = {x: current.pts[n - 2], y: current.pts[n - 1]}; current.next = current.pr ? n - 2 : n; }
     }
@@ -1237,6 +1290,7 @@ const board = (() => {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = palette()[stroke.c] || palette().ink;
+    if (stroke.pr && getStroke) { clearLive(); ctx.fillStyle = ctx.strokeStyle; ctx.fill(outlinePath(stroke)); return; }
     if (stroke.pr) { drawPressure(ctx, stroke, next / 2, mid, true); return; }
     ctx.lineWidth = stroke.w;
     ctx.beginPath();
@@ -1250,6 +1304,7 @@ const board = (() => {
   // using the same midpoint curves as the final drawing so nothing shifts when the pen lifts.
   function drawLive() {
     liveFrame = null;
+    if (onLiveLayer(current)) { drawLiveLayer(); return; }
     if (frame || !current?.pts || current.mid == null) return;
     const dpr = window.devicePixelRatio || 1, p = current.pts;
     ctx.setTransform(dpr * view.z, 0, 0, dpr * view.z, dpr * view.x, dpr * view.y);
@@ -1289,7 +1344,7 @@ const board = (() => {
     items = next;
     selection = selection.map((s) => items.find((x) => x === s || (s.k && x.k === s.k))).filter(Boolean);
     persist();
-    if (live && !frame && !snapView && !selection.length && live.mid) {
+    if (live && !frame && !snapView && !selection.length && (live.mid || (live.stroke.pr && getStroke))) {
       finishStroke(live.stroke, live.mid, live.next);
       updateButtons();
       dbg('board: items', items.length);
@@ -1767,6 +1822,7 @@ const board = (() => {
         parts.unshift(`<path d="${connSVGPath(g, it.w)}" ${st}/>`);
       } else if (k === 'text') parts.push(textSVG(it));
       else if (k === 'img') parts.push(`<image href="${await loadImage(it.id)}" x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" preserveAspectRatio="none"/>`);
+      else if (k === 's' && it.pr && getStroke) parts.push(`<path d="${outlineSVG(it)}" fill="${col}"/>`);
       else if (k === 's' && it.pr) {
         const p = it.pts, pr = it.pr, n = p.length / 2, segs = [];
         let x = p[0], y = p[1];
