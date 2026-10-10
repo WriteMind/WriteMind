@@ -9,56 +9,129 @@ window.addEventListener('error', (e) => {
   setTimeout(() => { toast.hidden = true; }, 9000);
 });
 
-// Sounds: long recordings of each instrument played through SoundCloud's own embeddable player
-// (audio only, so it's light on the iPad). The player loads when a sound is first chosen, and
-// closing the panel only hides it, so whatever is playing keeps playing.
-const soundTracks = {
-  flute: 'https://soundcloud.com/meditation-music/zen-flute-meditation-music',
-  hangdrum: 'https://soundcloud.com/meditative-mind/healing-hang-drum-music-reflections-handpan-meditation-music-432hz-pure-positive-vibes',
-  rain: 'https://soundcloud.com/relaxing-white-noise/fall-asleep-to-gentle-rain',
-  piano: 'https://soundcloud.com/sam_relaxation/r20210830tr10',
-  violin: 'https://soundcloud.com/relaxinginstrumentalmusic-music/sets/relaxing-violin-instrumental',
-  brownnoise: 'https://soundcloud.com/user-161519758/super-deep-brown-noise-1-hour'
-};
+// Sounds: Zen's own player. The instrument tracks were made with Google Gemini and edited to loop
+// seamlessly; brown noise is generated here. Web Audio plays the loops without gaps, and only the
+// sound in use is kept in memory.
+const soundFiles = {flute: 'audio/flute.mp3', hangdrum: 'audio/hangdrum.mp3', piano: 'audio/piano.mp3', violin: 'audio/violin.mp3'};
 const soundsButton = document.querySelector('#sounds');
 const soundPanel = document.querySelector('#sound-panel');
-const soundPlayer = soundPanel.querySelector('.sound-player');
-const playerOptions = {auto_play: true, hide_related: true, show_comments: false, show_reposts: false, show_teaser: false, visual: false};
-let soundWidget = null;
-let currentSound = '';
-// SoundCloud's own player controls (loaded with the player) make each recording repeat when it ends.
-function loadPlayerApi() {
-  return window.SC ? Promise.resolve() : new Promise((resolve, reject) => {
-    const script = Object.assign(document.createElement('script'), {src: 'https://w.soundcloud.com/player/api.js', onload: resolve, onerror: reject});
-    document.head.append(script);
-  });
-}
-function chooseSound(name) {
-  const url = soundTracks[name] || soundTracks.rain;
-  currentSound = url;
-  let frame = soundPlayer.querySelector('iframe');
-  if (frame && soundWidget) soundWidget.load(url, playerOptions); // same player, new recording
-  else if (!frame) {
-    const params = new URLSearchParams({url, color: '#7f9590', ...Object.fromEntries(Object.entries(playerOptions).map(([k, v]) => [k, String(v)]))});
-    frame = Object.assign(document.createElement('iframe'), {title: 'Sound player (SoundCloud)', src: `https://w.soundcloud.com/player/?${params}`});
-    frame.allow = 'autoplay; encrypted-media';
-    soundPlayer.append(frame);
-    loadPlayerApi().then(() => {
-      soundWidget = SC.Widget(frame);
-      // A playlist moves on to its next piece by itself; a single recording starts again.
-      soundWidget.bind(SC.Widget.Events.FINISH, () => { if (!currentSound.includes('/sets/')) { soundWidget.seekTo(0); soundWidget.play(); } });
-    }).catch(() => {});
+const soundPlay = document.querySelector('#sound-play');
+const soundPlayLabel = document.querySelector('#sound-play-label');
+const soundVolume = document.querySelector('#sound-volume');
+let audioCtx = null, masterGain = null, nowPlaying = null, soundName = 'piano', soundOn = false, soundRequest = 0;
+const soundBuffers = new Map();
+try {
+  const savedSound = localStorage.getItem('zen-sound');
+  if (savedSound === 'brownnoise' || savedSound in soundFiles) soundName = savedSound;
+  const savedVolume = parseFloat(localStorage.getItem('zen-volume'));
+  if (savedVolume >= 0 && savedVolume <= 1) soundVolume.value = String(savedVolume);
+} catch {}
+function audio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = Number(soundVolume.value);
+    masterGain.connect(audioCtx.destination);
   }
-  soundPanel.querySelectorAll('[data-sound]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sound === name)));
+  return audioCtx;
+}
+// MP3 files can carry a few milliseconds of encoder silence at each end; skip it so loops have no gap.
+function loopPoints(buffer) {
+  const data = buffer.getChannelData(0), limit = Math.min(8192, data.length >> 2), quiet = 1e-4;
+  let start = 0, end = data.length;
+  while (start < limit && Math.abs(data[start]) < quiet) start++;
+  while (end > data.length - limit && Math.abs(data[end - 1]) < quiet) end--;
+  return {start: start / buffer.sampleRate, end: end / buffer.sampleRate};
+}
+function brownNoise(ctx) {
+  const seconds = 12, fade = Math.floor(ctx.sampleRate * .5), n = ctx.sampleRate * seconds;
+  const buffer = ctx.createBuffer(2, n, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const raw = new Float32Array(n + fade);
+    let last = 0;
+    for (let i = 0; i < raw.length; i++) { last = (last + .02 * (Math.random() * 2 - 1)) / 1.02; raw[i] = last * 3.2; }
+    const out = buffer.getChannelData(ch);
+    for (let i = 0; i < n; i++) out[i] = raw[i];
+    for (let i = 0; i < fade; i++) { const t = i / fade; out[i] = raw[i] * Math.sin(t * Math.PI / 2) + raw[n + i] * Math.cos(t * Math.PI / 2); }
+  }
+  return buffer;
+}
+async function soundBuffer(name) {
+  if (soundBuffers.has(name)) return soundBuffers.get(name);
+  const ctx = audio();
+  let buffer;
+  if (name === 'brownnoise') buffer = brownNoise(ctx);
+  else {
+    const data = await (await fetch(soundFiles[name])).arrayBuffer();
+    buffer = await new Promise((resolve, reject) => ctx.decodeAudioData(data, resolve, reject));
+  }
+  for (const key of soundBuffers.keys()) if (key !== 'brownnoise') soundBuffers.delete(key); // one track in memory at a time
+  soundBuffers.set(name, buffer);
+  return buffer;
+}
+function fadeOutCurrent(seconds) {
+  if (!nowPlaying) return;
+  const {source, gain} = nowPlaying, t = audioCtx.currentTime;
+  gain.gain.cancelScheduledValues(t);
+  gain.gain.setValueAtTime(gain.gain.value, t);
+  gain.gain.linearRampToValueAtTime(0, t + seconds);
+  source.stop(t + seconds + .05);
+  nowPlaying = null;
+}
+function showSound() {
+  soundPanel.querySelectorAll('[data-sound]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sound === soundName)));
+  soundPlay.setAttribute('aria-pressed', String(soundOn));
+  soundPlayLabel.textContent = soundOn ? 'Pause' : 'Play';
+  soundsButton.classList.toggle('is-playing', soundOn);
+}
+async function startSound(name) {
+  const ctx = audio();
+  ctx.resume(); // called straight from the tap, which is what lets iPad Safari play
+  soundName = name;
+  soundOn = true;
+  const request = ++soundRequest;
+  showSound();
   try { localStorage.setItem('zen-sound', name); } catch {}
-}
-soundPanel.querySelectorAll('[data-sound]').forEach((b) => b.addEventListener('click', () => chooseSound(b.dataset.sound)));
-function setSoundPanel(open) {
-  if (open && !soundPlayer.querySelector('iframe')) {
-    let last = 'rain';
-    try { last = localStorage.getItem('zen-sound') in soundTracks ? localStorage.getItem('zen-sound') : 'rain'; } catch {}
-    chooseSound(last);
+  soundPlayLabel.textContent = soundBuffers.has(name) ? 'Pause' : 'Loading…';
+  try {
+    const buffer = await soundBuffer(name);
+    if (request !== soundRequest || !soundOn) return; // another choice was made meanwhile
+    fadeOutCurrent(1.2);
+    const source = ctx.createBufferSource(), gain = ctx.createGain();
+    source.buffer = buffer;
+    source.loop = true;
+    const {start, end} = name === 'brownnoise' ? {start: 0, end: buffer.duration} : loopPoints(buffer);
+    source.loopStart = start;
+    source.loopEnd = end;
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(name === 'brownnoise' ? .6 : 1, ctx.currentTime + 1.5);
+    source.connect(gain).connect(masterGain);
+    source.start(0, start);
+    nowPlaying = {source, gain};
+    showSound();
+  } catch {
+    soundOn = false;
+    showSound();
+    notify('That sound could not be loaded. Check the connection and try again.');
   }
+}
+function stopSound() {
+  soundOn = false;
+  soundRequest++;
+  if (audioCtx) fadeOutCurrent(.8);
+  showSound();
+}
+soundPlay.addEventListener('click', () => (soundOn ? stopSound() : startSound(soundName)));
+soundPanel.querySelectorAll('[data-sound]').forEach((b) => b.addEventListener('click', () => {
+  if (soundOn && b.dataset.sound === soundName) return;
+  startSound(b.dataset.sound);
+}));
+soundVolume.addEventListener('input', () => {
+  if (masterGain) masterGain.gain.setTargetAtTime(Number(soundVolume.value), audioCtx.currentTime, .05);
+  try { localStorage.setItem('zen-volume', soundVolume.value); } catch {}
+});
+showSound();
+function setSoundPanel(open) {
   soundPanel.classList.toggle('open', open);
   document.body.classList.toggle('sounds-open', open);
   // The page and board change size, so text wrapping, the focus band and the canvas are re-measured.
