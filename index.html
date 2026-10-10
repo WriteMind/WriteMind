@@ -21,7 +21,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" defer></script>
   <script src="app.js" defer></script>
 </head>
-<body data-mode="write">
+<body class="intro" data-mode="write">
   <header>
     <a class="brand" href="./" aria-label="Zen writing home"><span class="enso" aria-hidden="true"></span>Zen<span class="brand-note">a quiet place to write</span></a>
     <div class="header-right">
@@ -52,6 +52,7 @@
         <button id="write-undo" type="button" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg><span class="sr-only">Undo</span></button>
         <button id="write-redo" type="button" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg><span class="sr-only">Redo</span></button>
         <button id="add-image" type="button" title="Add a picture (you can also paste or drop one)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>Picture</button>
+        <button id="focus-mode" type="button" aria-pressed="false" title="Focus mode: dim everything except the line you are writing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 6h12M6 18h12" opacity=".35"/><path d="M3 12h18" stroke-width="2.2"/></svg>Focus</button>
         <button id="code-view" type="button" aria-pressed="false" title="Show the Markdown code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg>Code</button>
         <label class="sr-only" for="export-writing">Export writing</label>
         <select id="export-writing" title="Export your writing"><option value="" selected disabled>Export</option><option value="md">Markdown (.md)</option><option value="html">Web page (.html)</option><option value="pdf">PDF (print)</option><option value="txt">Plain text (.txt)</option></select>

@@ -5,6 +5,40 @@ const fileInput = document.querySelector('#file');
 const draftKey = 'zen-writing-draft-v1';
 let filename = 'quiet-thoughts.md';
 let saveTimer;
+// Diagnostics: add ?debug to the address to see live typing timings and Pencil events.
+// Tap the panel to reset the counters.
+const debugOn = new URLSearchParams(location.search).has('debug');
+const debugStats = {};
+let debugPanel = null;
+let debugTimer = null;
+function dbg(key, value) {
+  if (!debugOn) return;
+  debugStats[key] = value === undefined ? (typeof debugStats[key] === 'number' ? debugStats[key] + 1 : 1) : value;
+  debugTimer ??= setTimeout(renderDebug, 150);
+}
+function renderDebug() {
+  debugTimer = null;
+  if (!debugPanel) {
+    debugPanel = Object.assign(document.createElement('div'), {id: 'debug-panel', title: 'Tap to reset the counters'});
+    debugPanel.addEventListener('click', () => {
+      for (const k of Object.keys(debugStats)) if (typeof debugStats[k] === 'number') debugStats[k] = '–';
+      renderDebug();
+    });
+    document.body.append(debugPanel);
+  }
+  debugPanel.textContent = Object.entries(debugStats).map(([k, v]) => `${k}: ${v}`).join('\n');
+}
+if (debugOn) {
+  const ua = navigator.userAgent;
+  debugStats.browser = (ua.match(/CriOS\/[\d.]+|FxiOS\/[\d.]+|EdgiOS\/[\d.]+|Edg\/[\d.]+|Chrome\/[\d.]+|Firefox\/[\d.]+|Version\/[\d.]+(?=.*Safari)/)?.[0] || 'unknown') +
+    (navigator.maxTouchPoints > 1 ? ', touch screen' : '');
+  for (const k of ['typing: input delay ms', 'typing: to next frame ms', 'typing: slowest frame ms', 'typing: first key ms', 'typing: Markdown sync ms',
+    'pen mode', 'pen down', 'pen up', 'pen cancel', 'strokes saved', 'strokes finished late', 'lift-offs outside board', 'capture lost mid-stroke',
+    'palm touches ignored', 'finger touches ignored', 'palm strokes discarded', 'touch events blocked', 'pen moves/s', 'points per move', 'pressure']) debugStats[k] = '–';
+  renderDebug();
+}
+// The gentle slide-in plays once per visit, not every time Write is reopened.
+setTimeout(() => document.body.classList.remove('intro'), 1000);
 function refresh() {
   const words = writing.value.trim().match(/\S+/gu)?.length || 0;
   document.querySelector('#count').textContent = `${words} ${words === 1 ? 'word' : 'words'}`;
@@ -52,6 +86,7 @@ fileInput.addEventListener('change', async () => {
   fileInput.value = '';
 });
 document.querySelector('#save').addEventListener('click', async () => {
+  flushRich();
   const url = URL.createObjectURL(new Blob([await withEmbeddedImages(writing.value)], {type: 'text/markdown;charset=utf-8'}));
   const link = document.createElement('a');
   link.href = url;
@@ -550,7 +585,7 @@ function tagImages(root) {
     if (id) img.dataset.zenId = id;
   });
 }
-function htmlToMarkdown() {
+function ensureTurndown() {
   if (!turndown) {
     turndown = new TurndownService({headingStyle: 'atx', codeBlockStyle: 'fenced', bulletListMarker: '-', emDelimiter: '*'});
     if (window.turndownPluginGfm) turndown.use(turndownPluginGfm.gfm);
@@ -563,7 +598,11 @@ function htmlToMarkdown() {
       replacement: (c, node) => (node.classList.contains('math-display') ? `\n\n$$\n${node.dataset.tex}\n$$\n\n` : `$${node.dataset.tex}$`)
     });
   }
-  return turndown.turndown(rich.innerHTML)
+  return turndown;
+}
+function htmlToMarkdown() {
+  // Turndown is given the element itself (it works on a copy), which skips re-parsing the page as HTML text.
+  return ensureTurndown().turndown(rich)
     .replace(/​/g, '')
     .replace(/^(\s*)([-*]|\d+\.) {2,}/gm, '$1$2 ')
     .replace(/\n{3,}/g, '\n\n');
@@ -576,6 +615,9 @@ function schedulePreview() {
 }
 async function renderRich() {
   if (!richReady()) return;
+  // The Markdown is the source of truth here, so any conversion still waiting would be stale.
+  clearTimeout(richTimer);
+  richDirty = false;
   const ids = [...writing.value.matchAll(imagePattern)].map((m) => m[1]).filter((id) => !imageCache.has(id));
   if (ids.length) await Promise.all(ids.map(loadImage));
   rich.innerHTML = markdownToHTML(writing.value);
@@ -583,20 +625,37 @@ async function renderRich() {
   tagImages(rich);
   rich.classList.toggle('is-empty', !writing.value.trim());
 }
+let richDirty = false;
+function updateEmpty() {
+  const empty = rich.childElementCount <= 1 && !rich.querySelector('img, .math') && !rich.textContent.replace(/\u200b/g, '').trim();
+  rich.classList.toggle('is-empty', empty);
+}
+function runRichSync() {
+  richDirty = false;
+  const started = performance.now();
+  fromRich = true;
+  writing.value = htmlToMarkdown();
+  updateEmpty();
+  refresh();
+  fromRich = false;
+  persist();
+  dbg('typing: Markdown sync ms', Math.round(performance.now() - started));
+}
 function syncFromRich() {
+  richDirty = true;
   clearTimeout(richTimer);
-  richTimer = setTimeout(() => {
-    fromRich = true;
-    writing.value = htmlToMarkdown();
-    rich.classList.toggle('is-empty', !rich.textContent.trim() && !rich.querySelector('img'));
-    refresh();
-    fromRich = false;
-    persist();
-  }, 250);
+  // Converting the whole page back to Markdown is the heaviest step, so it waits for a pause in typing.
+  richTimer = setTimeout(runRichSync, 600);
+}
+// Finish any pending conversion right away (before saving, exporting or leaving the page).
+function flushRich() {
+  if (!richDirty || editor.dataset.view !== 'rich' || !richRendered) return;
+  clearTimeout(richTimer);
+  runRichSync();
 }
 function setView(view) {
   if (view === 'rich' && !richReady()) { status.textContent = 'Formatted view needs an internet connection'; view = 'code'; }
-  if (editor.dataset.view === 'rich' && view === 'code' && richRendered) { clearTimeout(richTimer); fromRich = true; writing.value = htmlToMarkdown(); fromRich = false; persist(); }
+  if (editor.dataset.view === 'rich' && view === 'code' && richRendered) { clearTimeout(richTimer); richDirty = false; fromRich = true; writing.value = htmlToMarkdown(); fromRich = false; persist(); }
   editor.dataset.view = view;
   codeButton.setAttribute('aria-pressed', String(view === 'code'));
   try { localStorage.setItem('zen-view', view); } catch {}
@@ -605,16 +664,108 @@ function setView(view) {
   focusEditor();
 }
 function focusEditor() { (editor.dataset.view === 'rich' ? rich : writing).focus(); }
-window.addEventListener('pagehide', () => {
-  if (editor.dataset.view !== 'rich' || !richRendered || !richTimer) return;
-  clearTimeout(richTimer);
-  writing.value = htmlToMarkdown();
-  persist();
-});
+window.addEventListener('pagehide', flushRich);
+// iPad Safari often skips pagehide when switching apps, so also save when the page is hidden.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushRich(); });
 codeButton.addEventListener('click', () => setView(editor.dataset.view === 'code' ? 'rich' : 'code'));
 try { if (localStorage.getItem('zen-view') === 'code') editor.dataset.view = 'code'; } catch {}
 codeButton.setAttribute('aria-pressed', String(editor.dataset.view === 'code'));
 window.addEventListener('load', () => { if (editor.dataset.view === 'rich') setView('rich'); });
+// Prepare the Markdown converter ahead of time so the first pause in typing doesn't stall.
+window.addEventListener('load', () => setTimeout(() => { try { if (window.TurndownService) ensureTurndown().turndown('<p>warm up</p>'); } catch {} }, 1500));
+
+// Focus mode: the line being written stays bright while the text above and below fades.
+const focusButton = document.querySelector('#focus-mode');
+let focusOn = false;
+let focusFrame = null;
+try { focusOn = localStorage.getItem('zen-focus') === 'on'; } catch {}
+function richLine() {
+  const sel = getSelection();
+  if (!sel.rangeCount || !rich.contains(sel.focusNode)) return null;
+  let rect;
+  if (!sel.isCollapsed) rect = sel.getRangeAt(0).getBoundingClientRect();
+  else {
+    const caret = document.createRange();
+    caret.setStart(sel.focusNode, sel.focusOffset);
+    caret.collapse(true);
+    const rects = caret.getClientRects();
+    rect = rects[rects.length - 1];
+  }
+  if (!rect || (!rect.height && !rect.top)) {
+    // Empty lines have no caret box; use the element the caret sits in.
+    let el = sel.focusNode.nodeType === 1 ? (sel.focusNode.childNodes[sel.focusOffset] || sel.focusNode) : sel.focusNode.parentElement;
+    if (el?.nodeType !== 1) el = el?.parentElement || rich;
+    const box = el.getBoundingClientRect(), lh = parseFloat(getComputedStyle(el).lineHeight) || 40;
+    rect = {top: box.top, bottom: box.top + Math.min(box.height || lh, lh)};
+  }
+  const top = rich.getBoundingClientRect().top;
+  return {top: rect.top - top, bottom: rect.bottom - top};
+}
+// A hidden copy of the textarea text finds where the caret's line is (textareas don't expose it).
+const mirrorProps = ['boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth',
+  'borderLeftWidth', 'borderStyle', 'fontFamily', 'fontSize', 'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'lineHeight', 'letterSpacing', 'wordSpacing',
+  'textIndent', 'textTransform', 'textAlign', 'tabSize', 'textWrap', 'wordBreak'];
+let caretMirror = null;
+function mirrorOffset(index) {
+  if (!caretMirror) {
+    caretMirror = document.createElement('div');
+    caretMirror.setAttribute('aria-hidden', 'true');
+    document.body.append(caretMirror);
+  }
+  const cs = getComputedStyle(writing);
+  for (const p of mirrorProps) if (cs[p] != null) caretMirror.style[p] = cs[p];
+  Object.assign(caretMirror.style, {position: 'absolute', visibility: 'hidden', left: '-9999px', top: '0', height: 'auto', overflow: 'hidden', whiteSpace: 'pre-wrap', overflowWrap: 'break-word'});
+  caretMirror.textContent = writing.value.slice(0, index);
+  const marker = caretMirror.appendChild(document.createElement('span'));
+  marker.textContent = '\u200b';
+  return marker.offsetTop;
+}
+function textareaLine() {
+  const lh = parseFloat(getComputedStyle(writing).lineHeight) || 28;
+  const top = mirrorOffset(writing.selectionStart);
+  return {top, bottom: (writing.selectionEnd === writing.selectionStart ? top : mirrorOffset(writing.selectionEnd)) + lh};
+}
+function updateFocus() {
+  focusFrame = null;
+  const el = editor.dataset.view === 'rich' ? rich : writing;
+  if (!focusOn || document.activeElement !== el) return;
+  const line = el === rich ? richLine() : textareaLine();
+  if (!line) return;
+  el.style.setProperty('--focus-top', `${Math.round(line.top - 4)}px`);
+  el.style.setProperty('--focus-bottom', `${Math.round(line.bottom + 4)}px`);
+}
+function scheduleFocus() { if (focusOn) focusFrame ??= requestAnimationFrame(updateFocus); }
+function setFocusMode(on) {
+  focusOn = on;
+  editor.classList.toggle('focusing', on);
+  focusButton.setAttribute('aria-pressed', String(on));
+  focusButton.title = on ? 'Focus mode is on: only the current line is bright' : 'Focus mode: dim everything except the line you are writing';
+  try { localStorage.setItem('zen-focus', on ? 'on' : 'off'); } catch {}
+}
+focusButton.addEventListener('click', () => { setFocusMode(!focusOn); focusEditor(); scheduleFocus(); });
+document.addEventListener('selectionchange', scheduleFocus);
+[rich, writing].forEach((el) => ['input', 'focus', 'keyup', 'pointerup', 'select'].forEach((type) => el.addEventListener(type, scheduleFocus)));
+window.addEventListener('resize', scheduleFocus);
+setFocusMode(focusOn);
+
+// Diagnostics for typing: how long a key waits, how soon the next frame paints, and the first key after tapping in.
+if (debugOn) {
+  let firstKey = true;
+  const measure = (e) => {
+    const started = performance.now(), wait = Math.round(started - e.timeStamp);
+    if (wait >= 0 && wait < 10000) dbg('typing: input delay ms', wait);
+    requestAnimationFrame(() => {
+      const frame = Math.round(performance.now() - started);
+      dbg('typing: to next frame ms', frame);
+      dbg('typing: slowest frame ms', Math.max(typeof debugStats['typing: slowest frame ms'] === 'number' ? debugStats['typing: slowest frame ms'] : 0, frame));
+      if (firstKey) { firstKey = false; dbg('typing: first key ms', frame + Math.max(0, wait)); }
+    });
+  };
+  [rich, writing].forEach((el) => {
+    el.addEventListener('beforeinput', measure);
+    el.addEventListener('focus', () => { firstKey = true; });
+  });
+}
 
 // Markdown-style shortcuts while writing formatted text.
 function currentBlock() {
@@ -640,11 +791,12 @@ rich.addEventListener('beforeinput', (e) => {
   syncFromRich();
 });
 rich.addEventListener('input', () => {
+  updateEmpty(); // the placeholder disappears with the very first letter
   // **bold**, *italic* and `code` turn into formatting as soon as they close.
   const sel = getSelection();
   const node = sel.anchorNode;
   if (node?.nodeType === 3 && sel.isCollapsed) {
-    const text = node.textContent.slice(0, sel.anchorOffset);
+    const text = node.textContent.slice(Math.max(0, sel.anchorOffset - 300), sel.anchorOffset);
     const m = text.match(/(\*\*([^*]+)\*\*|(?<!\*)\*([^*\s][^*]*)\*|`([^`]+)`|(?<![\\$\w])\$([^$\s](?:[^$]*[^$\s])?)\$)$/);
     if (m) {
       const range = document.createRange();
@@ -756,6 +908,7 @@ table{border-collapse:collapse}th,td{border-bottom:1px solid #e5e7ea;padding:.4e
 @media print{main{padding:0}}</style></head><body><main>${body}</main></body></html>`;
 }
 exportSelect.addEventListener('change', async () => {
+  flushRich();
   const kind = exportSelect.value;
   exportSelect.value = '';
   try {
@@ -1259,20 +1412,24 @@ const board = (() => {
   }
   canvas.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'pen') {
-      if (!penSeen) { penSeen = true; try { localStorage.setItem('zen-pen', '1'); } catch {} }
+      if (!penSeen) { penSeen = true; dbg('pen mode', 'on'); try { localStorage.setItem('zen-pen', '1'); } catch {} }
       touches.clear();
       pinch = null;
       // A palm that got there first is discarded; an earlier pen stroke whose lift-off Safari
       // has not reported yet is kept and finished, never thrown away.
-      if (activeId != null) { if (activeType === 'touch') cancelGesture(); else end({pointerId: activeId}); }
+      if (activeId != null) {
+        if (activeType === 'touch') { dbg('palm strokes discarded'); cancelGesture(); }
+        else { dbg('strokes finished late'); end({pointerId: activeId}); }
+      }
       penDown = e.pointerId;
     } else if (e.pointerType === 'mouse' && activeId != null) {
       end({pointerId: activeId});
     } else if (e.pointerType === 'touch') {
-      if (penDown != null) return; // palm while writing
+      if (penDown != null) { dbg('palm touches ignored'); return; } // palm while writing
       touches.set(e.pointerId, local(e));
       if (touches.size === 2) { cancelGesture(); startPinch(); return; }
-      if (touches.size > 2 || penSeen) return; // with a stylus, one finger never draws
+      if (touches.size > 2) return;
+      if (penSeen) { dbg('finger touches ignored'); return; } // with a stylus, one finger never draws
     }
     if (activeId != null) return;
     finishEditing();
@@ -1416,6 +1573,7 @@ const board = (() => {
     if (touches.delete(e.pointerId) && touches.size < 2) pinch = null;
     if (e.pointerId === penDown) penDown = null;
     if (e.pointerId !== activeId) return;
+    if (e.target && e.target !== canvas && e.type === 'pointerup') dbg('lift-offs outside board');
     activeId = null;
     if (panFrom) { panFrom = null; canvas.classList.remove('grabbing'); }
     if (marquee) { marquee = null; redraw(); }
@@ -1433,6 +1591,7 @@ const board = (() => {
         return;
       }
       if (s.t && Math.hypot(s.x2 - s.x1, s.y2 - s.y1) < 3) { redraw(); return; }
+      dbg(s.pts ? 'strokes saved' : 'shapes saved');
       commit([...items, s]);
     }
   }
@@ -1441,10 +1600,27 @@ const board = (() => {
   // Safety nets so a lift-off is never missed (end() ignores pointers it isn't tracking).
   window.addEventListener('pointerup', end);
   window.addEventListener('pointercancel', end);
-  canvas.addEventListener('lostpointercapture', (e) => { if (e.pointerId === activeId) end(e); });
+  canvas.addEventListener('lostpointercapture', (e) => { if (e.pointerId === activeId) { dbg('capture lost mid-stroke'); end(e); } });
   // iPad Scribble (handwriting-to-text) and Safari's touch gestures can swallow Apple Pencil
   // input on web pages; claiming the touches on the board keeps every stroke for drawing.
-  ['touchstart', 'touchmove'].forEach((type) => canvas.addEventListener(type, (e) => { if (e.cancelable) e.preventDefault(); }, {passive: false}));
+  ['touchstart', 'touchmove', 'touchend'].forEach((type) => canvas.addEventListener(type, (e) => {
+    if (e.cancelable) { e.preventDefault(); dbg('touch events blocked'); }
+  }, {passive: false}));
+  if (debugOn) {
+    dbg('pen mode', penSeen ? 'on' : 'off until the Pencil draws once');
+    let moves = 0, since = performance.now();
+    canvas.addEventListener('pointerdown', (e) => dbg(`${e.pointerType} down`), true);
+    canvas.addEventListener('pointerup', (e) => dbg(`${e.pointerType} up`), true);
+    canvas.addEventListener('pointercancel', (e) => dbg(`${e.pointerType} cancel`), true);
+    canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'pen' || e.pointerId !== activeId) return;
+      moves++;
+      dbg('points per move', e.getCoalescedEvents?.().length || 1);
+      dbg('pressure', e.pressure.toFixed(2));
+      const now = performance.now();
+      if (now - since >= 1000) { dbg('pen moves/s', Math.round(moves * 1000 / (now - since))); moves = 0; since = now; }
+    }, true);
+  }
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const s = local(e);

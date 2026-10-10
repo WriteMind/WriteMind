@@ -47,7 +47,7 @@ footer{display:flex;justify-content:space-between;align-items:center;gap:20px;ma
   .enso{animation:breathe 9s ease-in-out infinite}
   body::before{animation:drift 38s ease-in-out infinite alternate}
   body::after{animation:drift 46s ease-in-out infinite alternate-reverse}
-  main{animation:rise 1.4s cubic-bezier(.2,.7,.2,1) both}
+  body.intro main{animation:rise .8s cubic-bezier(.2,.7,.2,1) both}
   /* when rain plays, the light slows and softens */
   body:has(#audio[aria-pressed=true])::before,body:has(#audio[aria-pressed=true])::after{animation-duration:70s;opacity:1}
   /* chrome fades while writing */
@@ -251,3 +251,16 @@ header{transition:opacity .8s ease,visibility .8s}
 .board-open:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .board-open svg{width:16px;height:16px}
 .visually-hidden{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+
+/* ---------- focus mode ---------- */
+@property --focus-top{syntax:'<length>';inherits:false;initial-value:0px}
+@property --focus-bottom{syntax:'<length>';inherits:false;initial-value:48px}
+.editor.focusing #rich:focus,.editor.focusing #writing:focus{
+  -webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,.28) calc(var(--focus-top) - .9em),#000 var(--focus-top),#000 var(--focus-bottom),rgba(0,0,0,.28) calc(var(--focus-bottom) + .9em));
+  mask-image:linear-gradient(to bottom,rgba(0,0,0,.28) calc(var(--focus-top) - .9em),#000 var(--focus-top),#000 var(--focus-bottom),rgba(0,0,0,.28) calc(var(--focus-bottom) + .9em))
+}
+@media(prefers-reduced-motion:no-preference){.editor.focusing #rich,.editor.focusing #writing{transition:--focus-top .16s ease-out,--focus-bottom .16s ease-out}}
+#focus-mode[aria-pressed=true]{color:var(--ink);background:color-mix(in srgb,var(--ink) 8%,transparent)}
+
+/* ---------- diagnostics panel (?debug) ---------- */
+#debug-panel{position:fixed;left:12px;top:84px;z-index:40;max-width:min(320px,calc(100vw - 24px));padding:8px 10px;border-radius:12px;background:var(--glass);border:1px solid var(--line);color:var(--ink);font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;box-shadow:0 12px 40px -16px rgba(20,30,40,.3);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);cursor:pointer}
