@@ -4,7 +4,7 @@ A quiet, mobile-friendly space to write Markdown and sketch. No build step, acco
 
 - Write plain Markdown and download it with **Save .md**.
 - Use **Load .md** to open Markdown or text files.
-- Pick a soundscape (flute, hang drum, rain, piano or violin). Each plays a long YouTube recording (via youtube-nocookie.com); if YouTube is blocked or offline, a gentle locally generated version plays instead.
+- Pick a soundscape (flute, hang drum, rain, piano, violin or brown noise). Each plays a long YouTube recording (via youtube-nocookie.com); if YouTube is blocked or offline, a gentle locally generated version plays instead.
 - Drafts recover automatically in the same browser, when local storage is available. Download a Markdown file for a lasting backup.
 - Use the full screen button to write without distractions. The eye button beside the menu hides or shows the menus (Esc brings them back).
 - You write in formatted text by default (type `# ` for a heading, `- ` for a list, `**bold**`, Ctrl+B / Ctrl+I). **Code** shows the Markdown underneath. Equations: `$x^2$` inline, `$$ … $$` on their own lines. Undo / redo buttons sit beside the tools.

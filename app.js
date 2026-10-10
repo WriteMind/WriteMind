@@ -172,12 +172,16 @@ const sounds = {
     source.loop = true;
     const lp = context.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.value = 1400;
+    lp.frequency.value = soundSelect.value === 'brownnoise' ? 500 : 1400;
     const g = context.createGain();
     g.gain.value = .9;
     source.connect(lp).connect(g).connect(master);
     source.start();
     voice.stop = () => source.stop(context.currentTime + 2);
+  },
+  brownnoise() {
+    sounds.rain();
+    voice.out.gain.value = .8;
   },
   piano() {
     loop(() => {
@@ -217,7 +221,7 @@ function stopSynth() {
 }
 
 // Long YouTube recordings of each instrument; the local synth takes over if YouTube is unavailable.
-const videos = {flute: 'yl74sWWtHTg', hangdrum: 'EUpmd5M0qVo', rain: 'lasWefVUCsI', piano: 'wNYcqj8A1Tg', violin: '_C6QKEzDlGg'};
+const videos = {flute: 'ePb9m58EUWo', hangdrum: 'uwEaQk5VeS4', brownnoise: 'RqzGzwTY-6w', rain: 'lasWefVUCsI', piano: 'wNYcqj8A1Tg', violin: '_C6QKEzDlGg'};
 let yt;
 let ytFailed = false;
 let ytLoading;
