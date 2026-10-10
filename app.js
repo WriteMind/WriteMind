@@ -309,6 +309,21 @@ try {
 // Warm up the player so the first tap can start sound right away (mobile browsers need this).
 loadYouTube().catch(() => { ytFailed = true; });
 
+// Theme: auto (follows the device), light, dark or sepia.
+const themeSelect = document.querySelector('#theme');
+const themeMeta = document.querySelector('#theme-color');
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  themeSelect.value = theme;
+  try { localStorage.setItem('zen-theme', theme); } catch {}
+  themeMeta.content = getComputedStyle(document.documentElement).getPropertyValue('--paper').trim() || '#ffffff';
+  window.dispatchEvent(new Event('zen-theme'));
+}
+themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
+darkQuery.addEventListener?.('change', () => { if (themeSelect.value === 'auto') applyTheme('auto'); });
+applyTheme(document.documentElement.dataset.theme || 'auto');
+
 // Full screen, with a button to tuck the menus away.
 const isAppleTouch = /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 const fullButton = document.querySelector('#fullscreen');
@@ -323,37 +338,36 @@ function setFull(on) {
   fullButton.setAttribute('aria-pressed', String(on));
   if (!on && isAppleTouch) setMenusHidden(false);
 }
-// Safari on iPad leaves real full screen as soon as the keyboard opens, so writing on iPad and
-// iPhone uses an in-page focus view; the board (no keyboard) still uses real full screen.
-fullButton.addEventListener('click', async () => {
-  // iPad writing: a focus view that tucks every menu away (the eye button brings them back).
-  if (isAppleTouch && document.body.dataset.mode !== 'board') {
-    const on = !document.body.classList.contains('is-full');
-    setFull(on);
-    setMenusHidden(on);
-    if (on) { window.scrollTo(0, 0); focusEditor(); }
-    return;
-  }
+// Real full screen is always requested. Safari on iPad drops out of it when the keyboard opens;
+// when that happens the focus view (menus tucked away) stays on until the button is pressed again.
+let wantFull = false;
+const nativeFull = () => Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+function leaveFull() {
+  wantFull = false;
+  if (nativeFull()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document)?.catch?.(() => {}); } catch {} }
+  setFull(false);
+}
+fullButton.addEventListener('click', () => {
+  if (wantFull || document.body.classList.contains('is-full')) { leaveFull(); return; }
+  wantFull = true;
+  setFull(true);
+  if (isAppleTouch && document.body.dataset.mode !== 'board') setMenusHidden(true);
   const root = document.documentElement;
   const enter = root.requestFullscreen || root.webkitRequestFullscreen;
-  const exit = document.exitFullscreen || document.webkitExitFullscreen;
-  try {
-    if (document.fullscreenElement || document.webkitFullscreenElement) await exit.call(document);
-    else if (document.body.classList.contains('is-full')) setFull(false);
-    else if (enter) {
-      await enter.call(root);
-      if (!(document.fullscreenElement || document.webkitFullscreenElement)) setFull(true);
-    }
-    else setFull(true); // iPhone has no full screen API: use a distraction-free view instead.
-  } catch { setFull(!document.body.classList.contains('is-full')); }
+  // Called straight from the tap (no await first), as Safari requires.
+  try { enter?.call(root)?.catch?.(() => {}); } catch {}
 });
-['fullscreenchange', 'webkitfullscreenchange'].forEach((type) =>
-  document.addEventListener(type, () => setFull(Boolean(document.fullscreenElement || document.webkitFullscreenElement))));
+['fullscreenchange', 'webkitfullscreenchange'].forEach((type) => document.addEventListener(type, () => {
+  if (nativeFull()) { setFull(true); return; }
+  if (!wantFull) return;
+  if (isAppleTouch) status.textContent = 'Safari left full screen — the focus view stays on. Tap the full screen button to leave it.';
+  else { wantFull = false; setFull(false); }
+}));
 hideButton.addEventListener('click', () => setMenusHidden(!document.body.classList.contains('menus-hidden')));
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || document.fullscreenElement) return;
+  if (e.key !== 'Escape' || nativeFull()) return;
   if (document.body.classList.contains('menus-hidden')) setMenusHidden(false);
-  else if (document.body.classList.contains('is-full')) setFull(false);
+  else if (document.body.classList.contains('is-full')) leaveFull();
 });
 
 // Keep the drafts from the last two sessions.
@@ -749,7 +763,7 @@ function setMode(mode) {
   boardSection.hidden = mode !== 'board';
   try { localStorage.setItem('zen-mode', mode); } catch {}
   if (mode === 'board') board.open(); else focusEditor();
-  if (isAppleTouch && mode === 'board' && document.body.classList.contains('is-full') && !document.fullscreenElement && !document.webkitFullscreenElement) setFull(false);
+  if (mode === 'board' && document.body.classList.contains('menus-hidden')) setMenusHidden(false); // the board has its own hide button
 }
 modeButtons.forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
 document.querySelector('#board-hide').addEventListener('click', (e) => {
@@ -1697,7 +1711,7 @@ const board = (() => {
   });
   document.addEventListener('keyup', (e) => { if (e.key === ' ') { spaceHeld = false; canvas.classList.remove('panning'); } });
   window.addEventListener('resize', () => { if (!boardSection.hidden) resize(); });
-  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', redraw);
+  window.addEventListener('zen-theme', redraw);
 
   return {
     async open() {

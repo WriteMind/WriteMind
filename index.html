@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#16151a" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" id="theme-color" content="#ffffff">
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('zen-theme') || 'auto'; } catch (e) { document.documentElement.dataset.theme = 'auto'; }</script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -37,6 +37,8 @@
         <label class="sr-only" for="restore">Restore a backup from a previous session</label>
         <select id="restore" class="write-only" title="Drafts from your last two sessions" hidden></select>
         <button id="load" class="write-only" type="button">Load<span class="desktop"> .md</span></button>
+        <label class="sr-only" for="theme">Theme</label>
+        <select id="theme" title="Theme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="sepia">Sepia</option></select>
         <button id="fullscreen" type="button" aria-pressed="false" title="Full screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="sr-only">Full screen</span></button>
         <button id="save" class="save write-only" type="button">Save<span class="desktop"> .md</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4"/></svg></button>
       </nav>
