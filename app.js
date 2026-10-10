@@ -303,6 +303,16 @@ async function play() {
       yt.loadVideoById(videos[soundSelect.value]);
       yt.setVolume(40);
       yt.playVideo();
+      // iPad Safari may refuse to start a player that finished loading after the tap; ask for one more tap.
+      setTimeout(() => {
+        if (!soundOn() || voice || ytFailed) return;
+        const state = yt.getPlayerState?.();
+        if (state === YT.PlayerState.PLAYING || state === YT.PlayerState.BUFFERING) return;
+        stop();
+        audioButton.setAttribute('aria-pressed', 'false');
+        document.querySelector('#audio-label').textContent = 'Sound off';
+        notify('The music player is ready — tap Sound again to start it.');
+      }, 4000);
       return;
     } catch { ytFailed = true; }
   }
@@ -341,8 +351,9 @@ try {
   const saved = localStorage.getItem('zen-sound');
   if (saved in sounds) soundSelect.value = saved;
 } catch {}
-// Warm up the player so the first tap can start sound right away (mobile browsers need this).
-loadYouTube().catch(() => { ytFailed = true; });
+// The YouTube player is heavy, so it only loads once sound is first wanted (starting as the finger
+// touches the Sound button, a moment before the tap completes).
+audioButton.addEventListener('pointerdown', () => { if (!ytFailed) loadYouTube().catch(() => { ytFailed = true; }); }, {once: true});
 
 // Theme: auto (follows the device), light, dark or sepia.
 const themeSelect = document.querySelector('#theme');
