@@ -120,6 +120,9 @@ function setSoundPanel(open) {
     soundPanel.append(frame);
   }
   soundPanel.classList.toggle('open', open);
+  document.body.classList.toggle('sounds-open', open);
+  // The page and board change size, so text wrapping, the focus band and the canvas are re-measured.
+  window.dispatchEvent(new Event('resize'));
   soundPanel.setAttribute('aria-hidden', String(!open));
   soundsButton.setAttribute('aria-expanded', String(open));
 }

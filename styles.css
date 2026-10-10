@@ -259,12 +259,30 @@ header{transition:opacity .8s ease,visibility .8s}
 
 
 /* ---------- Sounds panel (Moodist) ---------- */
-.sound-panel{position:fixed;top:84px;right:16px;bottom:16px;z-index:25;width:min(420px,calc(100vw - 32px));display:flex;flex-direction:column;border-radius:18px;overflow:hidden;background:var(--paper);border:1px solid var(--line);box-shadow:0 24px 60px -24px rgba(20,30,40,.35);visibility:hidden;opacity:0;transform:translateX(12px);transition:opacity .25s,transform .25s,visibility .25s}
-.sound-panel.open{visibility:visible;opacity:1;transform:none}
-.sound-panel-bar{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 16px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+:root{--sound-w:340px}
+.sound-panel{position:fixed;z-index:25;display:flex;flex-direction:column;border-radius:18px;overflow:hidden;background:var(--paper);border:1px solid var(--line);box-shadow:0 24px 60px -24px rgba(20,30,40,.35);visibility:hidden;opacity:0;transition:opacity .2s,visibility .2s;
+  left:8px;right:8px;bottom:8px;height:50dvh}
+.sound-panel.open{visibility:visible;opacity:1}
+.sound-panel-bar{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 14px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
 .sound-panel-bar a{color:var(--ink)}
 .sound-panel-hint{flex:1;font-size:11px;opacity:.8}
-.sound-panel-bar button{min-height:36px;padding:6px 10px}
+.sound-panel-bar button{min-height:34px;padding:6px 10px}
 .sound-panel iframe{flex:1;width:100%;border:0;background:#fff}
 #sounds[aria-expanded=true]{color:var(--ink);background:color-mix(in srgb,var(--ink) 8%,transparent)}
-@media(max-width:650px){.sound-panel{top:auto;left:8px;right:8px;bottom:8px;width:auto;height:72dvh}.sound-panel-hint{display:none}}
+/* Narrow screens: a half-height sheet; the page gets room to scroll text above it. */
+body.sounds-open main{padding-bottom:50dvh}
+body.sounds-open .board-tools{bottom:calc(50dvh + 16px)}
+body.sounds-open #board-hide{bottom:calc(50dvh + 16px)}
+@media(max-width:650px){.sound-panel-hint{display:none}}
+/* Wide screens: a slim side panel, and the page moves aside instead of being covered. */
+@media(min-width:900px){
+  .sound-panel{left:auto;right:16px;top:84px;bottom:16px;height:auto;width:var(--sound-w)}
+  body.sounds-open{padding-right:calc(var(--sound-w) + 32px)}
+  body.sounds-open main{padding-bottom:0}
+  body.sounds-open #board{right:calc(var(--sound-w) + 32px)}
+  body.sounds-open[data-mode=board] header{right:calc(var(--sound-w) + 32px)}
+  body.sounds-open .board-tools{bottom:max(20px,env(safe-area-inset-bottom));left:calc((100% - var(--sound-w) - 32px) / 2);max-width:calc(100% - var(--sound-w) - 120px)}
+  body.sounds-open .brand-note{display:none}
+  body.sounds-open header{padding-left:24px;padding-right:24px;gap:12px}
+  body.sounds-open #board-hide{bottom:max(20px,env(safe-area-inset-bottom));right:calc(var(--sound-w) + 52px)}
+}
