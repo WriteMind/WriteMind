@@ -355,7 +355,16 @@ fullButton.addEventListener('click', () => {
   const root = document.documentElement;
   const enter = root.requestFullscreen || root.webkitRequestFullscreen;
   // Called straight from the tap (no await first), as Safari requires.
-  try { enter?.call(root)?.catch?.(() => {}); } catch {}
+  const homeTip = isAppleTouch ? ' For full screen on iPad, use Share → Add to Home Screen.' : '';
+  if (navigator.standalone || matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches) {
+    status.textContent = 'Already running full screen from the Home Screen — menus tucked away.';
+    return;
+  }
+  if (!enter) { status.textContent = `This browser has no full screen mode, so the focus view is on.${homeTip}`; return; }
+  // Report why Safari refused, so problems on a particular device can be pinned down.
+  const refused = (err) => { status.textContent = `The browser declined full screen (${err?.name || 'no reason given'}); the focus view is on.${homeTip}`; };
+  try { enter.call(root)?.catch?.(refused); } catch (err) { refused(err); }
+  setTimeout(() => { if (wantFull && !nativeFull() && !/declined|no full screen/.test(status.textContent)) status.textContent = `Full screen did not start; the focus view is on.${homeTip}`; }, 1200);
 });
 ['fullscreenchange', 'webkitfullscreenchange'].forEach((type) => document.addEventListener(type, () => {
   if (nativeFull()) { setFull(true); return; }
