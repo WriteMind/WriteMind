@@ -9,63 +9,46 @@ window.addEventListener('error', (e) => {
   setTimeout(() => { toast.hidden = true; }, 9000);
 });
 
-// Sounds: Zen's own player. The instrument tracks were made with Google Gemini and edited to loop
-// seamlessly; brown noise is generated here. Web Audio plays the loops without gaps, and only the
-// sound in use is kept in memory.
+// Sounds: a play/pause button and a list in the header. The instrument tracks were made with Google
+// Gemini and edited so each starts at its real opening and then repeats seamlessly between the two
+// loop points below; brown noise is generated here. Web Audio plays the loops without gaps.
 const soundFiles = {flute: 'audio/flute.mp3', hangdrum: 'audio/hangdrum.mp3', piano: 'audio/piano.mp3', violin: 'audio/violin.mp3'};
-const soundsButton = document.querySelector('#sounds');
-const soundPanel = document.querySelector('#sound-panel');
+const soundLoops = {flute: [8, 145.871247], hangdrum: [8, 137.018889], piano: [8, 148.416417], violin: [8, 166.088617]};
 const soundPlay = document.querySelector('#sound-play');
 const soundPlayLabel = document.querySelector('#sound-play-label');
-const soundVolume = document.querySelector('#sound-volume');
-let audioCtx = null, masterGain = null, nowPlaying = null, soundName = 'piano', soundOn = false, soundRequest = 0;
+const soundSelect = document.querySelector('#sound-select');
+let audioCtx = null, nowPlaying = null, soundOn = false, soundRequest = 0;
 const soundBuffers = new Map();
-try {
-  const savedSound = localStorage.getItem('zen-sound');
-  if (savedSound === 'brownnoise' || savedSound in soundFiles) soundName = savedSound;
-  const savedVolume = parseFloat(localStorage.getItem('zen-volume'));
-  if (savedVolume >= 0 && savedVolume <= 1) soundVolume.value = String(savedVolume);
-} catch {}
+try { const saved = localStorage.getItem('zen-sound'); if (saved === 'brownnoise' || saved in soundFiles) soundSelect.value = saved; } catch {}
 function audio() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    masterGain = audioCtx.createGain();
-    masterGain.gain.value = Number(soundVolume.value);
-    masterGain.connect(audioCtx.destination);
-  }
+  audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
   return audioCtx;
 }
-// MP3 files can carry a few milliseconds of encoder silence at each end; skip it so loops have no gap.
-function loopPoints(buffer) {
-  const data = buffer.getChannelData(0), limit = Math.min(8192, data.length >> 2), quiet = 1e-4;
-  let start = 0, end = data.length;
-  while (start < limit && Math.abs(data[start]) < quiet) start++;
-  while (end > data.length - limit && Math.abs(data[end - 1]) < quiet) end--;
-  return {start: start / buffer.sampleRate, end: end / buffer.sampleRate};
+// Some browsers keep a few milliseconds of MP3 encoder silence at the start; skip it.
+function leadIn(buffer) {
+  const data = buffer.getChannelData(0), limit = Math.min(8192, data.length >> 2);
+  let start = 0;
+  while (start < limit && Math.abs(data[start]) < 1e-4) start++;
+  return start / buffer.sampleRate;
 }
 function brownNoise(ctx) {
-  const seconds = 12, fade = Math.floor(ctx.sampleRate * .5), n = ctx.sampleRate * seconds;
+  const n = ctx.sampleRate * 12, fade = Math.floor(ctx.sampleRate * .5);
   const buffer = ctx.createBuffer(2, n, ctx.sampleRate);
   for (let ch = 0; ch < 2; ch++) {
-    const raw = new Float32Array(n + fade);
+    const raw = new Float32Array(n + fade), out = buffer.getChannelData(ch);
     let last = 0;
-    for (let i = 0; i < raw.length; i++) { last = (last + .02 * (Math.random() * 2 - 1)) / 1.02; raw[i] = last * 3.2; }
-    const out = buffer.getChannelData(ch);
+    for (let i = 0; i < raw.length; i++) { last = (last + .02 * (Math.random() * 2 - 1)) / 1.02; raw[i] = last * 2; }
     for (let i = 0; i < n; i++) out[i] = raw[i];
-    for (let i = 0; i < fade; i++) { const t = i / fade; out[i] = raw[i] * Math.sin(t * Math.PI / 2) + raw[n + i] * Math.cos(t * Math.PI / 2); }
+    for (let i = 0; i < fade; i++) { const t = i / fade * Math.PI / 2; out[i] = raw[i] * Math.sin(t) + raw[n + i] * Math.cos(t); }
   }
   return buffer;
 }
 async function soundBuffer(name) {
   if (soundBuffers.has(name)) return soundBuffers.get(name);
   const ctx = audio();
-  let buffer;
-  if (name === 'brownnoise') buffer = brownNoise(ctx);
-  else {
-    const data = await (await fetch(soundFiles[name])).arrayBuffer();
-    buffer = await new Promise((resolve, reject) => ctx.decodeAudioData(data, resolve, reject));
-  }
-  for (const key of soundBuffers.keys()) if (key !== 'brownnoise') soundBuffers.delete(key); // one track in memory at a time
+  const buffer = name === 'brownnoise' ? brownNoise(ctx)
+    : await new Promise(async (resolve, reject) => ctx.decodeAudioData(await (await fetch(soundFiles[name])).arrayBuffer(), resolve, reject));
+  soundBuffers.clear(); // one sound in memory at a time
   soundBuffers.set(name, buffer);
   return buffer;
 }
@@ -79,36 +62,30 @@ function fadeOutCurrent(seconds) {
   nowPlaying = null;
 }
 function showSound() {
-  soundPanel.querySelectorAll('[data-sound]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sound === soundName)));
   soundPlay.setAttribute('aria-pressed', String(soundOn));
   soundPlayLabel.textContent = soundOn ? 'Pause' : 'Play';
-  soundsButton.classList.toggle('is-playing', soundOn);
 }
-async function startSound(name) {
-  const ctx = audio();
-  ctx.resume(); // called straight from the tap, which is what lets iPad Safari play
-  soundName = name;
+async function startSound() {
+  const ctx = audio(), name = soundSelect.value, request = ++soundRequest;
+  ctx.resume(); // straight from the tap, which is what lets iPad Safari play
   soundOn = true;
-  const request = ++soundRequest;
   showSound();
-  try { localStorage.setItem('zen-sound', name); } catch {}
-  soundPlayLabel.textContent = soundBuffers.has(name) ? 'Pause' : 'Loading…';
   try {
     const buffer = await soundBuffer(name);
-    if (request !== soundRequest || !soundOn) return; // another choice was made meanwhile
-    fadeOutCurrent(1.2);
+    if (request !== soundRequest || !soundOn) return;
+    fadeOutCurrent(.8);
     const source = ctx.createBufferSource(), gain = ctx.createGain();
     source.buffer = buffer;
     source.loop = true;
-    const {start, end} = name === 'brownnoise' ? {start: 0, end: buffer.duration} : loopPoints(buffer);
-    source.loopStart = start;
-    source.loopEnd = end;
+    const lead = name === 'brownnoise' ? 0 : leadIn(buffer);
+    const [loopStart, loopEnd] = soundLoops[name] || [0, buffer.duration];
+    source.loopStart = lead + loopStart;
+    source.loopEnd = lead + loopEnd;
     gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(name === 'brownnoise' ? .6 : 1, ctx.currentTime + 1.5);
-    source.connect(gain).connect(masterGain);
-    source.start(0, start);
+    gain.gain.linearRampToValueAtTime(name === 'brownnoise' ? .5 : .85, ctx.currentTime + 1);
+    source.connect(gain).connect(ctx.destination);
+    source.start(0, lead); // always from the beginning
     nowPlaying = {source, gain};
-    showSound();
   } catch {
     soundOn = false;
     showSound();
@@ -118,29 +95,14 @@ async function startSound(name) {
 function stopSound() {
   soundOn = false;
   soundRequest++;
-  if (audioCtx) fadeOutCurrent(.8);
+  if (audioCtx) fadeOutCurrent(.6);
   showSound();
 }
-soundPlay.addEventListener('click', () => (soundOn ? stopSound() : startSound(soundName)));
-soundPanel.querySelectorAll('[data-sound]').forEach((b) => b.addEventListener('click', () => {
-  if (soundOn && b.dataset.sound === soundName) return;
-  startSound(b.dataset.sound);
-}));
-soundVolume.addEventListener('input', () => {
-  if (masterGain) masterGain.gain.setTargetAtTime(Number(soundVolume.value), audioCtx.currentTime, .05);
-  try { localStorage.setItem('zen-volume', soundVolume.value); } catch {}
+soundPlay.addEventListener('click', () => (soundOn ? stopSound() : startSound()));
+soundSelect.addEventListener('change', () => {
+  try { localStorage.setItem('zen-sound', soundSelect.value); } catch {}
+  if (soundOn) startSound();
 });
-showSound();
-function setSoundPanel(open) {
-  soundPanel.classList.toggle('open', open);
-  document.body.classList.toggle('sounds-open', open);
-  // The page and board change size, so text wrapping, the focus band and the canvas are re-measured.
-  window.dispatchEvent(new Event('resize'));
-  soundPanel.setAttribute('aria-hidden', String(!open));
-  soundsButton.setAttribute('aria-expanded', String(open));
-}
-soundsButton.addEventListener('click', () => setSoundPanel(!soundPanel.classList.contains('open')));
-document.querySelector('#sound-close').addEventListener('click', () => setSoundPanel(false));
 
 const writing = document.querySelector('#writing');
 const status = document.querySelector('#status');

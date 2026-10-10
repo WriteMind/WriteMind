@@ -4,7 +4,7 @@ A quiet, mobile-friendly space to write Markdown and sketch. No build step, acco
 
 - Write plain Markdown and download it with **Save .md**.
 - Use **Load .md** to open Markdown or text files.
-- **Sounds** plays calm flute, hang drum, piano and violin loops (made with Google Gemini and edited to loop seamlessly), or brown noise generated in the browser. Pick a sound, press Play, and set the volume; closing the panel keeps it playing.
+- Pick a sound from the list in the header (flute, hang drum, piano, violin or brown noise) and press play. The instrument loops were made with Google Gemini; each starts from the beginning and repeats seamlessly.
 - Drafts recover automatically in the same browser, when local storage is available. Download a Markdown file for a lasting backup.
 - Use the full screen button to write without distractions (on iPad, Safari may leave full screen when the keyboard opens — the focus view with hidden menus stays on until you press the button again; for full screen that never drops out, use Share → Add to Home Screen). The eye button beside the menu hides or shows the menus (Esc brings them back).
 - You write in formatted text by default (type `# ` for a heading, `- ` for a list, `**bold**`, Ctrl+B / Ctrl+I). **Code** shows the Markdown underneath. Equations: `$x^2$` inline, `$$ … $$` on their own lines. Undo / redo buttons sit beside the tools.
