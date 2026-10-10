@@ -39,9 +39,20 @@ if (debugOn) {
 }
 // The gentle slide-in plays once per visit, not every time Write is reopened.
 setTimeout(() => document.body.classList.remove('intro'), 1000);
-function refresh() {
+let growFrame = null;
+function refresh(growOnly = false) {
   const words = writing.value.trim().match(/\S+/gu)?.length || 0;
   document.querySelector('#count').textContent = `${words} ${words === 1 ? 'word' : 'words'}`;
+  // While typing, the textarea only ever grows; shrinking it to re-measure lays out the whole text twice.
+  if (growOnly) {
+    // Measured just before the next paint, when the browser lays out the text anyway, so typing
+    // never waits on a forced layout of the whole document.
+    growFrame ??= requestAnimationFrame(() => {
+      growFrame = null;
+      if (writing.scrollHeight > writing.clientHeight) writing.style.height = `${writing.scrollHeight}px`;
+    });
+    return schedulePreview();
+  }
   writing.style.height = 'auto';
   writing.style.height = `${writing.scrollHeight}px`;
   schedulePreview();
@@ -60,8 +71,8 @@ try {
     status.textContent = 'Draft restored on this device';
   }
 } catch { status.textContent = 'Save a .md file to keep your writing'; }
-writing.addEventListener('input', () => {
-  refresh();
+writing.addEventListener('input', (e) => {
+  refresh(Boolean(e.inputType) && !e.inputType.startsWith('delete'));
   clearTimeout(saveTimer);
   saveTimer = setTimeout(persist, 350);
 });
@@ -717,7 +728,7 @@ const mirrorProps = ['boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddin
   'borderLeftWidth', 'borderStyle', 'fontFamily', 'fontSize', 'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'lineHeight', 'letterSpacing', 'wordSpacing',
   'textIndent', 'textTransform', 'textAlign', 'tabSize', 'textWrap', 'wordBreak'];
 let caretMirror = null;
-function mirrorOffset(index) {
+function mirrorOffset(index, from = 0) {
   if (!caretMirror) {
     caretMirror = document.createElement('div');
     caretMirror.setAttribute('aria-hidden', 'true');
@@ -726,15 +737,24 @@ function mirrorOffset(index) {
   const cs = getComputedStyle(writing);
   for (const p of mirrorProps) if (cs[p] != null) caretMirror.style[p] = cs[p];
   Object.assign(caretMirror.style, {position: 'absolute', visibility: 'hidden', left: '-9999px', top: '0', height: 'auto', overflow: 'hidden', whiteSpace: 'pre-wrap', overflowWrap: 'break-word'});
-  caretMirror.textContent = writing.value.slice(0, index);
+  caretMirror.textContent = writing.value.slice(from, from + index);
   const marker = caretMirror.appendChild(document.createElement('span'));
   marker.textContent = '\u200b';
   return marker.offsetTop;
 }
+// Text before the current paragraph rarely changes while typing, so its height is cached; each
+// keystroke then only measures the paragraph being written instead of the whole document.
+let prefixCache = {text: null, width: 0, top: 0};
+function caretTop(index) {
+  const value = writing.value, start = value.lastIndexOf('\n', index - 1) + 1;
+  const prefix = value.slice(0, start), width = writing.clientWidth;
+  if (prefix !== prefixCache.text || width !== prefixCache.width) prefixCache = {text: prefix, width, top: mirrorOffset(start)};
+  return prefixCache.top + mirrorOffset(index - start, start);
+}
 function textareaLine() {
   const lh = parseFloat(getComputedStyle(writing).lineHeight) || 28;
-  const top = mirrorOffset(writing.selectionStart);
-  return {top, bottom: (writing.selectionEnd === writing.selectionStart ? top : mirrorOffset(writing.selectionEnd)) + lh};
+  const top = caretTop(writing.selectionStart);
+  return {top, bottom: (writing.selectionEnd === writing.selectionStart ? top : caretTop(writing.selectionEnd)) + lh};
 }
 function updateFocus() {
   focusFrame = null;
@@ -1017,15 +1037,25 @@ const board = (() => {
     if (bitmaps.has(id)) return bitmaps.get(id);
     const img = new Image();
     bitmaps.set(id, img);
-    loadImage(id).then((url) => { img.onload = redraw; img.src = url; });
+    // Pictures are decoded in the background and drawn once ready, so adding photos never freezes the board.
+    loadImage(id).then((url) => {
+      img.src = url;
+      const ready = () => { img.dataset.ready = '1'; redraw(); };
+      if (img.decode) img.decode().then(ready, ready); else img.onload = ready;
+    });
     return img;
   }
+  const strokeBounds = new WeakMap();
   function bounds(it) {
     const k = kind(it);
     if (k === 's') {
+      if (it !== current && strokeBounds.has(it)) return strokeBounds.get(it);
       let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
       for (let i = 0; i < it.pts.length; i += 2) { a = Math.min(a, it.pts[i]); c = Math.max(c, it.pts[i]); b = Math.min(b, it.pts[i + 1]); d = Math.max(d, it.pts[i + 1]); }
-      return {x: a - it.w, y: b - it.w, w: c - a + it.w * 2, h: d - b + it.w * 2};
+      const pad = it.pr ? it.w * 1.75 : it.w;
+      const box = {x: a - pad, y: b - pad, w: c - a + pad * 2, h: d - b + pad * 2};
+      if (it !== current) strokeBounds.set(it, box);
+      return box;
     }
     if (k === 'img') return {x: it.x, y: it.y, w: it.w, h: it.h};
     if (k === 'conn') {
@@ -1117,7 +1147,7 @@ const board = (() => {
   const pressureWidth = (w, pr) => w * (.25 + 1.5 * Math.min(1, Math.max(0, pr)));
   // Draws a pressure stroke segment by segment, using the same midpoint curves as plain strokes.
   // `from`/`start` let the live renderer continue where it stopped; returns the new position.
-  function drawPressure(c, it, from, start) {
+  function drawPressure(c, it, from, start, finish = !start) {
     const p = it.pts, pr = it.pr, n = p.length / 2;
     if (n === 1) {
       c.fillStyle = c.strokeStyle;
@@ -1126,17 +1156,23 @@ const board = (() => {
       c.fill();
       return {j: 1, x: p[0], y: p[1]};
     }
-    let j = Math.max(1, from), x = start ? start.x : p[0], y = start ? start.y : p[1];
+    let j = Math.max(1, from), x = start ? start.x : p[0], y = start ? start.y : p[1], width = null;
     for (; j < n - 1; j++) {
       const mx = (p[j * 2] + p[j * 2 + 2]) / 2, my = (p[j * 2 + 1] + p[j * 2 + 3]) / 2;
-      c.lineWidth = pressureWidth(it.w, (pr[j - 1] + pr[j]) / 2);
-      c.beginPath();
-      c.moveTo(x, y);
+      // Widths are rounded to quarter pixels so neighbouring segments share one path (far fewer draw calls).
+      const next = Math.round(pressureWidth(it.w, (pr[j - 1] + pr[j]) / 2) * 4) / 4;
+      if (next !== width) {
+        if (width !== null) c.stroke();
+        width = next;
+        c.lineWidth = width;
+        c.beginPath();
+        c.moveTo(x, y);
+      }
       c.quadraticCurveTo(p[j * 2], p[j * 2 + 1], mx, my);
-      c.stroke();
       x = mx; y = my;
     }
-    if (!start) { // finished stroke: close with the last point
+    if (width !== null) c.stroke();
+    if (finish) { // finished stroke: close with the last point
       c.lineWidth = pressureWidth(it.w, pr[n - 1]);
       c.beginPath();
       c.moveTo(x, y);
@@ -1168,7 +1204,7 @@ const board = (() => {
     }
     if (k === 'img') {
       const img = bitmap(it.id);
-      if (img.complete && img.naturalWidth) c.drawImage(img, it.x, it.y, it.w, it.h);
+      if (img.dataset.ready && img.naturalWidth) c.drawImage(img, it.x, it.y, it.w, it.h);
       else { c.fillStyle = css('--grid'); c.fillRect(it.x, it.y, it.w, it.h); }
       return;
     }
@@ -1262,6 +1298,9 @@ const board = (() => {
 
   function draw() {
     frame = null;
+    snapView = null;
+    clearTimeout(settleTimer);
+    const drawStart = debugOn ? performance.now() : 0;
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.width, h = canvas.height;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1276,8 +1315,14 @@ const board = (() => {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     const colors = palette();
+    // Only items that overlap the visible area (plus a margin) are drawn.
+    const m = 40 / view.z, left = -view.x / view.z - m, top = -view.y / view.z - m;
+    const right = (canvas.clientWidth - view.x) / view.z + m, bottom = (canvas.clientHeight - view.y) / view.z + m;
+    const visible = (it) => { const b = bounds(it); return b.x < right && b.x + b.w > left && b.y < bottom && b.y + b.h > top; };
+    let drawn = 0;
     for (const it of items) if (kind(it) === 'conn') drawItem(ctx, it, colors);
-    for (const it of items) if (kind(it) !== 'conn') drawItem(ctx, it, colors);
+    for (const it of items) if (kind(it) !== 'conn' && kind(it) !== 'text' && visible(it)) { drawItem(ctx, it, colors); drawn++; }
+    shownView = {...view};
     if (current) {
       drawItem(ctx, current, colors);
       if (current.pts) { const n = current.pts.length; current.mid = {x: current.pts[n - 2], y: current.pts[n - 1]}; current.next = current.pr ? n - 2 : n; }
@@ -1311,8 +1356,48 @@ const board = (() => {
     ctx.restore();
     zoomLabel.textContent = `${Math.round(view.z * 100)}%`;
     updateButtons();
+    if (debugOn) { dbg('board: redraw ms', Math.round(performance.now() - drawStart)); dbg('board: items', `${items.length} (${drawn} on screen)`); }
   }
   const redraw = () => { frame ??= requestAnimationFrame(draw); };
+  let shownView = null, snapView = null, snapCanvas = null, moveFrame = null, settleTimer = null;
+  function moveView() {
+    if (!shownView || frame) { redraw(); return; }
+    if (!snapView) {
+      snapCanvas ??= document.createElement('canvas');
+      snapCanvas.width = canvas.width;
+      snapCanvas.height = canvas.height;
+      snapCanvas.getContext('2d').drawImage(canvas, 0, 0);
+      snapView = shownView;
+    }
+    moveFrame ??= requestAnimationFrame(() => {
+      moveFrame = null;
+      if (!snapView) return;
+      const dpr = window.devicePixelRatio || 1, k = view.z / snapView.z;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(snapCanvas, (view.x - snapView.x * k) * dpr, (view.y - snapView.y * k) * dpr, snapCanvas.width * k, snapCanvas.height * k);
+      layer.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
+      zoomLabel.textContent = `${Math.round(view.z * 100)}%`;
+    });
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(redraw, 140);
+  }
+  // A finished freehand stroke is already on screen from live drawing; only its last bit is added.
+  function finishStroke(stroke, mid, next) {
+    const dpr = window.devicePixelRatio || 1, p = stroke.pts;
+    ctx.setTransform(dpr * view.z, 0, 0, dpr * view.z, dpr * view.x, dpr * view.y);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = palette()[stroke.c] || palette().ink;
+    if (stroke.pr) { drawPressure(ctx, stroke, next / 2, mid, true); return; }
+    ctx.lineWidth = stroke.w;
+    ctx.beginPath();
+    ctx.moveTo(mid.x, mid.y);
+    let i = next;
+    for (; i + 2 < p.length; i += 2) ctx.quadraticCurveTo(p[i], p[i + 1], (p[i] + p[i + 2]) / 2, (p[i + 1] + p[i + 3]) / 2);
+    ctx.lineTo(p[p.length - 2], p[p.length - 1]);
+    ctx.stroke();
+  }
   // While a freehand stroke is in progress, only its new segments are drawn (no full repaint),
   // using the same midpoint curves as the final drawing so nothing shifts when the pen lifts.
   function drawLive() {
@@ -1350,13 +1435,17 @@ const board = (() => {
       status.textContent = 'The board could not be saved on this device';
     }), 400);
   }
-  function commit(next, silent = false) {
+  function commit(next, silent = false, live = null) {
     next = pruneConnectors(next);
     if (!silent) { past.push(items); if (past.length > 100) past.shift(); future = []; }
     items = next;
     selection = selection.map((s) => items.find((x) => x === s || (s.k && x.k === s.k))).filter(Boolean);
     persist();
-    redraw();
+    if (live && !frame && !snapView && !selection.length && live.mid) {
+      finishStroke(live.stroke, live.mid, live.next);
+      updateButtons();
+      dbg('board: items', items.length);
+    } else redraw();
   }
   function undo() { finishEditing(); if (!past.length) return; future.push(items); items = past.pop(); selection = []; persist(); redraw(); }
   function redo() { finishEditing(); if (!future.length) return; past.push(items); items = future.pop(); selection = []; persist(); redraw(); }
@@ -1369,7 +1458,7 @@ const board = (() => {
     const k = z / view.z;
     view = {x: sx - (sx - view.x) * k, y: sy - (sy - view.y) * k, z};
     persist();
-    redraw();
+    moveView();
   }
   function hitTest(p) {
     const r = 8 / view.z;
@@ -1377,6 +1466,8 @@ const board = (() => {
       let it = items[i];
       const k = kind(it);
       if (k === 's') {
+        const b = bounds(it); // cheap box check first; most strokes are nowhere near the pen
+        if (p.x < b.x - r || p.x > b.x + b.w + r || p.y < b.y - r || p.y > b.y + b.h + r) continue;
         for (let j = 0; j < it.pts.length; j += 2) if (Math.hypot(it.pts[j] - p.x, it.pts[j + 1] - p.y) < r + it.w / 2) return it;
       } else if (k === 'conn') {
         const g = connGeom(it);
@@ -1517,7 +1608,7 @@ const board = (() => {
       return;
     }
     const s = local(e);
-    if (panFrom) { view.x += s.x - panFrom.x; view.y += s.y - panFrom.y; panFrom = s; persist(); redraw(); return; }
+    if (panFrom) { view.x += s.x - panFrom.x; view.y += s.y - panFrom.y; panFrom = s; persist(); moveView(); return; }
     const p = toWorld(s.x, s.y);
     if (tool === 'eraser' && e.buttons & 1) { const hit = hitTest(p); if (hit) commit(items.filter((x) => x !== hit)); return; }
     if (marquee) {
@@ -1603,7 +1694,8 @@ const board = (() => {
       }
       if (s.t && Math.hypot(s.x2 - s.x1, s.y2 - s.y1) < 3) { redraw(); return; }
       dbg(s.pts ? 'strokes saved' : 'shapes saved');
-      commit([...items, s]);
+      const {mid, next, ...saved} = s;
+      commit([...items, saved], false, s.pts ? {stroke: saved, mid, next} : null);
     }
   }
   canvas.addEventListener('pointerup', end);
@@ -1636,7 +1728,7 @@ const board = (() => {
     e.preventDefault();
     const s = local(e);
     if (e.ctrlKey || e.metaKey) zoomAt(s.x, s.y, Math.exp(-e.deltaY * .01));
-    else { view.x -= e.deltaX; view.y -= e.deltaY; persist(); redraw(); }
+    else { view.x -= e.deltaX; view.y -= e.deltaY; persist(); moveView(); }
   }, {passive: false});
 
   // Pictures on the board.
@@ -1759,7 +1851,9 @@ const board = (() => {
   async function readyImages() {
     await Promise.all(items.filter((it) => kind(it) === 'img').map((it) => new Promise((r) => {
       const img = bitmap(it.id);
-      if (img.complete && img.naturalWidth) r(); else { img.addEventListener('load', r, {once: true}); img.addEventListener('error', r, {once: true}); setTimeout(r, 3000); }
+      const started = performance.now();
+      const check = () => (img.dataset.ready || performance.now() - started > 3000 ? r() : setTimeout(check, 50));
+      check();
     })));
   }
   // Text boxes are exported as XHTML inside SVG (equations use the browser's own MathML).
