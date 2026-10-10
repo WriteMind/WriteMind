@@ -9,15 +9,55 @@ window.addEventListener('error', (e) => {
   setTimeout(() => { toast.hidden = true; }, 9000);
 });
 
-// Sounds: the Moodist ambient mixer (moodist.mvze.net) in a side panel. It loads on first open,
-// and closing the panel only hides it, so whatever is playing keeps playing.
+// Sounds: long recordings of each instrument played through SoundCloud's own embeddable player
+// (audio only, so it's light on the iPad). The player loads when a sound is first chosen, and
+// closing the panel only hides it, so whatever is playing keeps playing.
+const soundTracks = {
+  flute: 'https://soundcloud.com/meditation-music/zen-flute-meditation-music',
+  hangdrum: 'https://soundcloud.com/meditative-mind/healing-hang-drum-music-reflections-handpan-meditation-music-432hz-pure-positive-vibes',
+  rain: 'https://soundcloud.com/relaxing-white-noise/fall-asleep-to-gentle-rain',
+  piano: 'https://soundcloud.com/sam_relaxation/r20210830tr10',
+  violin: 'https://soundcloud.com/relaxinginstrumentalmusic-music/sets/relaxing-violin-instrumental',
+  brownnoise: 'https://soundcloud.com/user-161519758/super-deep-brown-noise-1-hour'
+};
 const soundsButton = document.querySelector('#sounds');
 const soundPanel = document.querySelector('#sound-panel');
+const soundPlayer = soundPanel.querySelector('.sound-player');
+const playerOptions = {auto_play: true, hide_related: true, show_comments: false, show_reposts: false, show_teaser: false, visual: false};
+let soundWidget = null;
+let currentSound = '';
+// SoundCloud's own player controls (loaded with the player) make each recording repeat when it ends.
+function loadPlayerApi() {
+  return window.SC ? Promise.resolve() : new Promise((resolve, reject) => {
+    const script = Object.assign(document.createElement('script'), {src: 'https://w.soundcloud.com/player/api.js', onload: resolve, onerror: reject});
+    document.head.append(script);
+  });
+}
+function chooseSound(name) {
+  const url = soundTracks[name] || soundTracks.rain;
+  currentSound = url;
+  let frame = soundPlayer.querySelector('iframe');
+  if (frame && soundWidget) soundWidget.load(url, playerOptions); // same player, new recording
+  else if (!frame) {
+    const params = new URLSearchParams({url, color: '#7f9590', ...Object.fromEntries(Object.entries(playerOptions).map(([k, v]) => [k, String(v)]))});
+    frame = Object.assign(document.createElement('iframe'), {title: 'Sound player (SoundCloud)', src: `https://w.soundcloud.com/player/?${params}`});
+    frame.allow = 'autoplay; encrypted-media';
+    soundPlayer.append(frame);
+    loadPlayerApi().then(() => {
+      soundWidget = SC.Widget(frame);
+      // A playlist moves on to its next piece by itself; a single recording starts again.
+      soundWidget.bind(SC.Widget.Events.FINISH, () => { if (!currentSound.includes('/sets/')) { soundWidget.seekTo(0); soundWidget.play(); } });
+    }).catch(() => {});
+  }
+  soundPanel.querySelectorAll('[data-sound]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sound === name)));
+  try { localStorage.setItem('zen-sound', name); } catch {}
+}
+soundPanel.querySelectorAll('[data-sound]').forEach((b) => b.addEventListener('click', () => chooseSound(b.dataset.sound)));
 function setSoundPanel(open) {
-  if (open && !soundPanel.querySelector('iframe')) {
-    const frame = Object.assign(document.createElement('iframe'), {src: 'https://moodist.mvze.net/', title: 'Moodist ambient sounds', loading: 'eager'});
-    frame.allow = 'autoplay';
-    soundPanel.append(frame);
+  if (open && !soundPlayer.querySelector('iframe')) {
+    let last = 'rain';
+    try { last = localStorage.getItem('zen-sound') in soundTracks ? localStorage.getItem('zen-sound') : 'rain'; } catch {}
+    chooseSound(last);
   }
   soundPanel.classList.toggle('open', open);
   document.body.classList.toggle('sounds-open', open);

@@ -258,25 +258,27 @@ header{transition:opacity .8s ease,visibility .8s}
 #debug-panel{position:fixed;left:12px;top:84px;z-index:40;max-width:min(320px,calc(100vw - 24px));padding:8px 10px;border-radius:12px;background:var(--glass);border:1px solid var(--line);color:var(--ink);font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;box-shadow:0 12px 40px -16px rgba(20,30,40,.3);cursor:pointer}
 
 
-/* ---------- Sounds panel (Moodist) ---------- */
+/* ---------- Sounds panel (SoundCloud player) ---------- */
 :root{--sound-w:340px}
 .sound-panel{position:fixed;z-index:25;display:flex;flex-direction:column;border-radius:18px;overflow:hidden;background:var(--paper);border:1px solid var(--line);box-shadow:0 24px 60px -24px rgba(20,30,40,.35);visibility:hidden;opacity:0;transition:opacity .2s,visibility .2s;
-  left:8px;right:8px;bottom:8px;height:50dvh}
+  left:8px;right:8px;bottom:8px}
 .sound-panel.open{visibility:visible;opacity:1}
-.sound-panel-bar{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 14px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
-.sound-panel-bar a{color:var(--ink)}
-.sound-panel-hint{flex:1;font-size:11px;opacity:.8}
+.sound-panel-bar{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 14px;font-size:12px;color:var(--muted)}
+.sound-panel-title{font-family:var(--serif);font-style:italic;font-size:16px;color:var(--ink)}
+.sound-panel-hint{flex:1;font-size:11px;opacity:.85}
 .sound-panel-bar button{min-height:34px;padding:6px 10px}
-.sound-panel iframe{flex:1;width:100%;border:0;background:#fff}
+.sound-choices{display:flex;flex-wrap:wrap;gap:6px;padding:4px 12px 10px}
+.sound-choices button{min-height:34px;padding:6px 12px;border:1px solid var(--line);font-size:12px}
+.sound-choices button[aria-pressed=true]{color:var(--paper);background:var(--ink);border-color:var(--ink)}
+.sound-player iframe{display:block;width:100%;height:166px;border:0}
 #sounds[aria-expanded=true]{color:var(--ink);background:color-mix(in srgb,var(--ink) 8%,transparent)}
-/* Narrow screens: a half-height sheet; the page gets room to scroll text above it. */
-body.sounds-open main{padding-bottom:50dvh}
-body.sounds-open .board-tools{bottom:calc(50dvh + 16px)}
-body.sounds-open #board-hide{bottom:calc(50dvh + 16px)}
+/* Narrow screens: a compact sheet at the bottom; the page gets room to scroll above it. */
+body.sounds-open main{padding-bottom:300px}
+body.sounds-open .board-tools,body.sounds-open #board-hide{bottom:312px}
 @media(max-width:650px){.sound-panel-hint{display:none}}
-/* Wide screens: a slim side panel, and the page moves aside instead of being covered. */
+/* Wide screens: a slim card on the right, and the page moves aside instead of being covered. */
 @media(min-width:900px){
-  .sound-panel{left:auto;right:16px;top:84px;bottom:16px;height:auto;width:var(--sound-w)}
+  .sound-panel{left:auto;right:16px;top:84px;bottom:auto;width:var(--sound-w)}
   body.sounds-open{padding-right:calc(var(--sound-w) + 32px)}
   body.sounds-open main{padding-bottom:0}
   body.sounds-open #board{right:calc(var(--sound-w) + 32px)}
