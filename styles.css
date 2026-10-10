@@ -224,3 +224,8 @@ header{transition:opacity .8s ease,visibility .8s}
 .board-text.note{background:var(--note);color:var(--note-text);padding:16px 18px;min-height:150px;box-sizing:border-box;font-size:18px;line-height:1.55;border-radius:4px 4px 14px 4px;box-shadow:0 1px 2px rgba(0,0,0,.06),0 14px 28px -14px rgba(20,30,40,.35)}
 .board-text.note textarea{margin:0;padding:0;border:0;background:transparent;width:100%;box-sizing:border-box;min-height:118px;font-size:14px}
 .board-text.note:empty::before{content:"Empty note"}
+
+/* ---------- touch and stylus ---------- */
+#board,#board *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#board .board-text.editing,#board .board-text.editing *{-webkit-user-select:text;user-select:text}
+#board-canvas{-webkit-tap-highlight-color:transparent}

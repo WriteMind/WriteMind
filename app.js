@@ -321,7 +321,11 @@ function setFull(on) {
   document.body.classList.toggle('is-full', on);
   fullButton.setAttribute('aria-pressed', String(on));
 }
+// Safari on iPad leaves real full screen whenever the keyboard opens or the page is touched,
+// so iPad and iPhone get the in-page focus view instead.
+const isAppleTouch = /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 fullButton.addEventListener('click', async () => {
+  if (isAppleTouch) { setFull(!document.body.classList.contains('is-full')); return; }
   const root = document.documentElement;
   const enter = root.requestFullscreen || root.webkitRequestFullscreen;
   const exit = document.exitFullscreen || document.webkitExitFullscreen;
@@ -770,7 +774,14 @@ const board = (() => {
   let spaceHeld = false;
   let saveTimer;
   let frame;
-  const pointers = new Map();
+  // Pointer handling. Once an Apple Pencil (or any stylus) is used, fingers and palms never draw:
+  // one finger does nothing, two fingers pan and zoom, and touches are ignored while the pen is down.
+  const touches = new Map();
+  let activeId = null;
+  let penDown = null;
+  let penSeen = false;
+  try { penSeen = localStorage.getItem('zen-pen') === '1'; } catch {}
+  let liveFrame = null;
   const bitmaps = new Map();
   const textNodes = new Map();
   let pinch = null;
@@ -1015,7 +1026,10 @@ const board = (() => {
     const colors = palette();
     for (const it of items) if (kind(it) === 'conn') drawItem(ctx, it, colors);
     for (const it of items) if (kind(it) !== 'conn') drawItem(ctx, it, colors);
-    if (current) drawItem(ctx, current, colors);
+    if (current) {
+      drawItem(ctx, current, colors);
+      if (current.pts) { const n = current.pts.length; current.mid = {x: current.pts[n - 2], y: current.pts[n - 1]}; current.next = n; }
+    }
     if (current?.t === 'conn' && current.hover) {
       const b = bounds(current.hover), m = 6 / view.z;
       ctx.save(); ctx.strokeStyle = css('--accent'); ctx.lineWidth = 2 / view.z; ctx.strokeRect(b.x - m, b.y - m, b.w + m * 2, b.h + m * 2); ctx.restore();
@@ -1047,6 +1061,31 @@ const board = (() => {
     updateButtons();
   }
   const redraw = () => { frame ??= requestAnimationFrame(draw); };
+  // While a freehand stroke is in progress, only its new segments are drawn (no full repaint),
+  // using the same midpoint curves as the final drawing so nothing shifts when the pen lifts.
+  function drawLive() {
+    liveFrame = null;
+    if (frame || !current?.pts || current.mid == null) return;
+    const dpr = window.devicePixelRatio || 1, p = current.pts;
+    ctx.setTransform(dpr * view.z, 0, 0, dpr * view.z, dpr * view.x, dpr * view.y);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = palette()[current.c] || palette().ink;
+    ctx.lineWidth = current.w;
+    ctx.beginPath();
+    ctx.moveTo(current.mid.x, current.mid.y);
+    let i = current.next;
+    if (i + 2 >= p.length) return;
+    while (i + 2 < p.length) {
+      const mx = (p[i] + p[i + 2]) / 2, my = (p[i + 1] + p[i + 3]) / 2;
+      ctx.quadraticCurveTo(p[i], p[i + 1], mx, my);
+      current.mid = {x: mx, y: my};
+      i += 2;
+    }
+    current.next = i;
+    ctx.stroke();
+  }
+  const redrawLive = () => { liveFrame ??= requestAnimationFrame(drawLive); };
   function persist() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => idb('board', 'readwrite', (s) => s.put({items, view}, 'main')).catch(() => {
@@ -1114,16 +1153,33 @@ const board = (() => {
   }
   const local = (e) => { const r = canvas.getBoundingClientRect(); return {x: e.clientX - r.left, y: e.clientY - r.top}; };
 
+  function startPinch() {
+    const [a, b] = [...touches.values()];
+    pinch = {d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2};
+  }
+  function cancelGesture() {
+    if (activeId == null) return;
+    activeId = null;
+    current = null; drag = null; marquee = null; panFrom = null;
+    redraw();
+  }
   canvas.addEventListener('pointerdown', (e) => {
-    finishEditing();
-    try { canvas.setPointerCapture(e.pointerId); } catch {}
-    pointers.set(e.pointerId, local(e));
-    if (pointers.size === 2) {
-      current = null; drag = null; marquee = null;
-      const [a, b] = [...pointers.values()];
-      pinch = {d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2};
-      return;
+    if (e.pointerType === 'pen') {
+      if (!penSeen) { penSeen = true; try { localStorage.setItem('zen-pen', '1'); } catch {} }
+      penDown = e.pointerId;
+      touches.clear();
+      pinch = null;
+      if (activeId != null) cancelGesture(); // a palm got there first
+    } else if (e.pointerType === 'touch') {
+      if (penDown != null) return; // palm while writing
+      touches.set(e.pointerId, local(e));
+      if (touches.size === 2) { cancelGesture(); startPinch(); return; }
+      if (touches.size > 2 || penSeen) return; // with a stylus, one finger never draws
     }
+    if (activeId != null) return;
+    finishEditing();
+    activeId = e.pointerId;
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
     const s = local(e);
     if (tool === 'hand' || spaceHeld || e.button === 1) { panFrom = s; canvas.classList.add('grabbing'); return; }
     if (e.button !== 0) return;
@@ -1162,7 +1218,7 @@ const board = (() => {
       return;
     }
     if (shapes.includes(tool)) current = {t: tool, k: newKey(), c: color, w: sizes[size][1], x1: p.x, y1: p.y, x2: p.x, y2: p.y};
-    else current = {c: color, w: sizes[size][1], pts: [p.x, p.y]};
+    else current = {c: color, w: sizes[size][1], pts: [+p.x.toFixed(2), +p.y.toFixed(2)]};
     redraw();
   });
   canvas.addEventListener('dblclick', (e) => {
@@ -1171,21 +1227,23 @@ const board = (() => {
     else if (tool === 'select' && !hit) { setTool('text'); }
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (!pointers.has(e.pointerId)) {
-      if (tool === 'select') canvas.style.cursor = onHandle(toWorld(local(e).x, local(e).y)) ? 'nwse-resize' : '';
-      return;
-    }
-    const s = local(e);
-    pointers.set(e.pointerId, s);
-    if (pinch && pointers.size === 2) {
-      const [a, b] = [...pointers.values()];
+    if (touches.has(e.pointerId)) {
+      touches.set(e.pointerId, local(e));
+      if (pinch && touches.size === 2) {
+        const [a, b] = [...touches.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y), cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
       view.x += cx - pinch.cx;
       view.y += cy - pinch.cy;
-      zoomAt(cx, cy, d / pinch.d);
-      pinch = {d, cx, cy};
+        zoomAt(cx, cy, d / pinch.d);
+        pinch = {d, cx, cy};
+        return;
+      }
+    }
+    if (e.pointerId !== activeId) {
+      if (activeId == null && tool === 'select') canvas.style.cursor = onHandle(toWorld(local(e).x, local(e).y)) ? 'nwse-resize' : '';
       return;
     }
+    const s = local(e);
     if (panFrom) { view.x += s.x - panFrom.x; view.y += s.y - panFrom.y; panFrom = s; persist(); redraw(); return; }
     const p = toWorld(s.x, s.y);
     if (tool === 'eraser' && e.buttons & 1) { const hit = hitTest(p); if (hit) commit(items.filter((x) => x !== hit)); return; }
@@ -1235,17 +1293,20 @@ const board = (() => {
       return;
     }
     const coalesced = e.getCoalescedEvents?.() || [];
+    const r = canvas.getBoundingClientRect();
     for (const ev of coalesced.length ? coalesced : [e]) {
-      const q = toWorld(local(ev).x, local(ev).y);
+      const q = toWorld(ev.clientX - r.left, ev.clientY - r.top);
       const n = current.pts.length;
-      if (Math.hypot(q.x - current.pts[n - 2], q.y - current.pts[n - 1]) > .6 / view.z) current.pts.push(+q.x.toFixed(1), +q.y.toFixed(1));
+      if (Math.hypot(q.x - current.pts[n - 2], q.y - current.pts[n - 1]) > .35 / view.z) current.pts.push(+q.x.toFixed(2), +q.y.toFixed(2));
     }
-    redraw();
+    redrawLive();
   });
   function end(e) {
-    pointers.delete(e.pointerId);
-    if (pointers.size < 2) pinch = null;
-    if (panFrom && pointers.size === 0) { panFrom = null; canvas.classList.remove('grabbing'); }
+    if (touches.delete(e.pointerId) && touches.size < 2) pinch = null;
+    if (e.pointerId === penDown) penDown = null;
+    if (e.pointerId !== activeId) return;
+    activeId = null;
+    if (panFrom) { panFrom = null; canvas.classList.remove('grabbing'); }
     if (marquee) { marquee = null; redraw(); }
     if (drag) {
       if (drag.moved) { past.push(drag.before); future = []; persist(); }
