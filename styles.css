@@ -245,3 +245,9 @@ header{transition:opacity .8s ease,visibility .8s}
 @media(max-width:650px){#theme{max-width:70px}}
 #toast{position:fixed;left:50%;top:max(16px,env(safe-area-inset-top));transform:translateX(-50%);z-index:20;max-width:min(520px,calc(100vw - 32px));padding:10px 16px;border-radius:14px;background:var(--glass);border:1px solid var(--line);color:var(--ink);font-size:13px;line-height:1.45;text-align:center;box-shadow:0 12px 40px -16px rgba(20,30,40,.3);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
 #toast[hidden]{display:none}
+
+.board-open{display:flex;align-items:center;gap:6px;min-height:38px;padding:8px 12px;border-radius:999px;font:500 12px var(--sans);color:var(--muted);cursor:pointer;white-space:nowrap}
+.board-open:hover,.board-open:focus-visible{color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.board-open:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.board-open svg{width:16px;height:16px}
+.visually-hidden{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}

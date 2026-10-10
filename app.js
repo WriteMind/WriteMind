@@ -820,6 +820,8 @@ const board = (() => {
   // one finger does nothing, two fingers pan and zoom, and touches are ignored while the pen is down.
   const touches = new Map();
   let activeId = null;
+  let activeType = null;
+  let lastTap = {};
   let penDown = null;
   let penSeen = false;
   try { penSeen = localStorage.getItem('zen-pen') === '1'; } catch {}
@@ -1258,10 +1260,14 @@ const board = (() => {
   canvas.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'pen') {
       if (!penSeen) { penSeen = true; try { localStorage.setItem('zen-pen', '1'); } catch {} }
-      penDown = e.pointerId;
       touches.clear();
       pinch = null;
-      if (activeId != null) cancelGesture(); // a palm got there first
+      // A palm that got there first is discarded; an earlier pen stroke whose lift-off Safari
+      // has not reported yet is kept and finished, never thrown away.
+      if (activeId != null) { if (activeType === 'touch') cancelGesture(); else end({pointerId: activeId}); }
+      penDown = e.pointerId;
+    } else if (e.pointerType === 'mouse' && activeId != null) {
+      end({pointerId: activeId});
     } else if (e.pointerType === 'touch') {
       if (penDown != null) return; // palm while writing
       touches.set(e.pointerId, local(e));
@@ -1271,6 +1277,7 @@ const board = (() => {
     if (activeId != null) return;
     finishEditing();
     activeId = e.pointerId;
+    activeType = e.pointerType;
     try { canvas.setPointerCapture(e.pointerId); } catch {}
     const s = local(e);
     if (tool === 'hand' || spaceHeld || e.button === 1) { panFrom = s; canvas.classList.add('grabbing'); return; }
@@ -1290,6 +1297,9 @@ const board = (() => {
     if (tool === 'select') {
       if (onHandle(p)) { drag = {mode: 'resize', start: p, orig: selection[0], before: items}; return; }
       const hit = hitTest(p);
+      // Double-tap a text box or note to edit it (touch screens get no dblclick here).
+      if (hit && kind(hit) === 'text' && lastTap.k === hit.k && e.timeStamp - lastTap.t < 400) { lastTap = {}; activeId = null; editText(hit); return; }
+      lastTap = hit ? {k: hit.k, t: e.timeStamp} : {};
       if (hit) {
         if (e.shiftKey) selection = isSelected(hit) ? selection.filter((x) => x !== hit) : [...selection, hit];
         else if (!isSelected(hit)) selection = [hit];
@@ -1428,6 +1438,13 @@ const board = (() => {
   }
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
+  // Safety nets so a lift-off is never missed (end() ignores pointers it isn't tracking).
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
+  canvas.addEventListener('lostpointercapture', (e) => { if (e.pointerId === activeId) end(e); });
+  // iPad Scribble (handwriting-to-text) and Safari's touch gestures can swallow Apple Pencil
+  // input on web pages; claiming the touches on the board keeps every stroke for drawing.
+  ['touchstart', 'touchmove'].forEach((type) => canvas.addEventListener(type, (e) => { if (e.cancelable) e.preventDefault(); }, {passive: false}));
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const s = local(e);
@@ -1653,7 +1670,6 @@ const board = (() => {
     const k = boardExport.value;
     boardExport.value = '';
     finishEditing();
-    if (k === 'import') { importInput.click(); return; }
     if (!items.length) { status.textContent = 'The board is empty'; return; }
     try {
       if (k === 'png' || k === 'jpg') (await toCanvas()).toBlob((b) => download(b, `zen-board.${k}`), k === 'png' ? 'image/png' : 'image/jpeg', .92);
@@ -1710,6 +1726,9 @@ const board = (() => {
     status.textContent = `Board opened (${next.length} items) — Undo brings back the previous board`;
   }
   const importInput = document.querySelector('#board-import-file');
+  document.querySelector('.board-open').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); importInput.click(); }
+  });
   importInput.addEventListener('change', () => { if (importInput.files[0]) importBoard(importInput.files[0]); importInput.value = ''; });
 
   document.addEventListener('keydown', (e) => {
