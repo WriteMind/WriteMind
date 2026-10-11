@@ -12,14 +12,16 @@ window.addEventListener('error', (e) => {
 // Sounds: a play/pause button and a list in the header. The instrument tracks were made with Google
 // Gemini and edited so each starts at its real opening and then repeats seamlessly between the two
 // loop points below; brown noise is generated here. Web Audio plays the loops without gaps.
-const soundFiles = {flute: 'audio/flute.mp3', hangdrum: 'audio/hangdrum.mp3', piano: 'audio/piano.mp3', violin: 'audio/violin.mp3'};
+const soundFiles = {flute: 'audio/flute.mp3', hangdrum: 'audio/hangdrum.mp3', piano: 'audio/piano.mp3', violin: 'audio/violin.mp3', 'lofi:0': 'audio/lofi1.mp3', 'lofi:1': 'audio/lofi2.mp3'};
+// Lofi plays its tracks one after another, then starts over.
+const soundPlaylists = {lofi: ['lofi:0', 'lofi:1']};
 const soundLoops = {flute: [8, 145.871247], hangdrum: [8, 137.018889], piano: [8, 148.416417], violin: [8, 166.088617]};
 const soundPlay = document.querySelector('#sound-play');
 const soundPlayLabel = document.querySelector('#sound-play-label');
 const soundSelect = document.querySelector('#sound-select');
 let audioCtx = null, nowPlaying = null, soundOn = false, soundRequest = 0;
 const soundBuffers = new Map();
-try { const saved = localStorage.getItem('zen-sound'); if (saved === 'brownnoise' || saved in soundFiles) soundSelect.value = saved; } catch {}
+try { const saved = localStorage.getItem('zen-sound'); if (saved === 'brownnoise' || saved in soundFiles || saved in soundPlaylists) soundSelect.value = saved; } catch {}
 function audio() {
   audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
   return audioCtx;
@@ -48,7 +50,8 @@ async function soundBuffer(name) {
   const ctx = audio();
   const buffer = name === 'brownnoise' ? brownNoise(ctx)
     : await new Promise(async (resolve, reject) => ctx.decodeAudioData(await (await fetch(soundFiles[name])).arrayBuffer(), resolve, reject));
-  soundBuffers.clear(); // one sound in memory at a time
+  const group = (key) => key.split(':')[0]; // keep only the current sound (or playlist) in memory
+  for (const key of [...soundBuffers.keys()]) if (group(key) !== group(name)) soundBuffers.delete(key);
   soundBuffers.set(name, buffer);
   return buffer;
 }
@@ -70,6 +73,7 @@ async function startSound() {
   ctx.resume(); // straight from the tap, which is what lets iPad Safari play
   soundOn = true;
   showSound();
+  if (soundPlaylists[name]) { playTrack(name, 0, request); return; }
   try {
     const buffer = await soundBuffer(name);
     if (request !== soundRequest || !soundOn) return;
@@ -86,6 +90,27 @@ async function startSound() {
     source.connect(gain).connect(ctx.destination);
     source.start(0, lead); // always from the beginning
     nowPlaying = {source, gain};
+  } catch {
+    soundOn = false;
+    showSound();
+    notify('That sound could not be loaded. Check the connection and try again.');
+  }
+}
+async function playTrack(list, index, request) {
+  const ctx = audio(), tracks = soundPlaylists[list];
+  try {
+    const buffer = await soundBuffer(tracks[index]);
+    if (request !== soundRequest || !soundOn) return;
+    fadeOutCurrent(.8);
+    const source = ctx.createBufferSource(), gain = ctx.createGain(), lead = leadIn(buffer);
+    source.buffer = buffer;
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(.85, ctx.currentTime + (index === 0 ? 1 : .3));
+    source.connect(gain).connect(ctx.destination);
+    source.start(0, lead);
+    nowPlaying = {source, gain};
+    source.onended = () => { if (nowPlaying?.source === source) { nowPlaying = null; playTrack(list, (index + 1) % tracks.length, request); } };
+    soundBuffer(tracks[(index + 1) % tracks.length]).catch(() => {}); // get the next track ready
   } catch {
     soundOn = false;
     showSound();
