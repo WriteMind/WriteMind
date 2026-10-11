@@ -953,25 +953,31 @@ const board = (() => {
   // Connectors link two items by key and follow them when they move.
   const linkable = (it) => ['rect', 'ellipse', 'triangle', 'text', 'img'].includes(kind(it));
   const byKey = (k) => items.find((x) => x.k === k);
-  function edgePoint(it, from) {
-    const b = bounds(it), cx = b.x + b.w / 2, cy = b.y + b.h / 2;
-    const dx = from.x - cx, dy = from.y - cy;
-    if (!dx && !dy) return {x: cx, y: cy};
-    let t;
-    if (kind(it) === 'ellipse') t = 1 / Math.hypot(dx / (b.w / 2 || 1), dy / (b.h / 2 || 1));
-    else t = Math.min(Math.abs((b.w / 2) / (dx || 1e-9)), Math.abs((b.h / 2) / (dy || 1e-9)));
-    const gap = 6 / Math.hypot(dx, dy);
-    return {x: cx + dx * (t + gap), y: cy + dy * (t + gap)};
+  // Connectors attach to the middle of the side facing the other end (top, right, bottom or left).
+  function shapeBox(it) {
+    const k = kind(it);
+    if (k === 'img' || k === 'text') return {x: it.x, y: it.y, w: it.w, h: k === 'text' ? it.h || 48 : it.h};
+    return {x: Math.min(it.x1, it.x2), y: Math.min(it.y1, it.y2), w: Math.abs(it.x2 - it.x1), h: Math.abs(it.y2 - it.y1)};
   }
-  const centre = (it) => { const b = bounds(it); return {x: b.x + b.w / 2, y: b.y + b.h / 2}; };
+  function anchor(it, toward, gap = 6) {
+    const b = shapeBox(it), cx = b.x + b.w / 2, cy = b.y + b.h / 2, dx = toward.x - cx, dy = toward.y - cy;
+    const tri = kind(it) === 'triangle';
+    // compare against the box's proportions so wide or tall shapes pick the natural side
+    if (Math.abs(dx) * b.h >= Math.abs(dy) * b.w) {
+      const s = Math.sign(dx) || 1, edge = tri ? cx + s * b.w / 4 : cx + s * b.w / 2;
+      return {x: edge + s * gap, y: cy, side: s > 0 ? 'right' : 'left'};
+    }
+    const s = Math.sign(dy) || 1;
+    return {x: cx, y: (s > 0 ? b.y + b.h : b.y) + s * gap, side: s > 0 ? 'bottom' : 'top'};
+  }
+  const boxCentre = (it) => { const b = shapeBox(it); return {x: b.x + b.w / 2, y: b.y + b.h / 2}; };
   function connEnds(it, to) {
     const a = byKey(it.a), b = to ? null : byKey(it.b);
     if (!a || (!b && !to)) return null;
-    const ca = centre(a), cb = b ? centre(b) : to;
-    const p1 = edgePoint(a, cb), p2 = b ? edgePoint(b, ca) : to;
-    return {x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y};
+    const ca = boxCentre(a), cb = b ? boxCentre(b) : to;
+    const p1 = anchor(a, cb), p2 = b ? anchor(b, ca) : to;
+    return {x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, s1: p1.side, s2: p2.side};
   }
-  // Straight, curved or elbow paths between two items.
   function connGeom(it, to) {
     const a = byKey(it.a), b = to ? null : byKey(it.b);
     if (!a || (!b && !to)) return null;
@@ -980,12 +986,10 @@ const board = (() => {
       const e = connEnds(it, to);
       return {route, p1: {x: e.x1, y: e.y1}, p2: {x: e.x2, y: e.y2}, samples: [{x: e.x1, y: e.y1}, {x: e.x2, y: e.y2}], ang: Math.atan2(e.y2 - e.y1, e.x2 - e.x1)};
     }
-    const ba = bounds(a), bb = b ? bounds(b) : {x: to.x, y: to.y, w: 0, h: 0};
-    const ca = {x: ba.x + ba.w / 2, y: ba.y + ba.h / 2}, cb = {x: bb.x + bb.w / 2, y: bb.y + bb.h / 2};
-    const horiz = Math.abs(cb.x - ca.x) >= Math.abs(cb.y - ca.y), g = 6, gb = b ? g : 0;
-    const sx = Math.sign(cb.x - ca.x) || 1, sy = Math.sign(cb.y - ca.y) || 1;
-    const p1 = horiz ? {x: ca.x + sx * (ba.w / 2 + g), y: ca.y} : {x: ca.x, y: ca.y + sy * (ba.h / 2 + g)};
-    const p2 = horiz ? {x: cb.x - sx * (bb.w / 2 + gb), y: cb.y} : {x: cb.x, y: cb.y - sy * (bb.h / 2 + gb)};
+    const e = connEnds(it, to), p1 = {x: e.x1, y: e.y1}, p2 = {x: e.x2, y: e.y2};
+    // the path leaves and arrives at right angles to the sides it is attached to
+    const horiz = e.s1 === 'left' || e.s1 === 'right';
+    const sx = Math.sign(p2.x - p1.x) || 1, sy = Math.sign(p2.y - p1.y) || 1;
     if (route === 'elbow') {
       const m = horiz ? (p1.x + p2.x) / 2 : (p1.y + p2.y) / 2;
       const pts = horiz ? [p1, {x: m, y: p1.y}, {x: m, y: p2.y}, p2] : [p1, {x: p1.x, y: m}, {x: p2.x, y: m}, p2];
@@ -1618,7 +1622,7 @@ const board = (() => {
     if (current.t === 'conn') {
       const over = items.slice().reverse().find((it) => { if (!linkable(it) || it.k === current.a) return false; const b = bounds(it); return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h; });
       current.hover = over || null;
-      current.to = over ? centre(over) : p;
+      current.to = over ? boxCentre(over) : p;
       redraw();
       return;
     }
