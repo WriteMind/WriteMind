@@ -689,9 +689,18 @@ rich.addEventListener('beforeinput', (e) => {
   const lists = {'-': 'insertUnorderedList', '*': 'insertUnorderedList', '1.': 'insertOrderedList'};
   if (!rules[before] && !lists[before]) return;
   e.preventDefault();
-  sel.anchorNode.textContent = sel.anchorNode.textContent.slice(before.length);
-  if (rules[before]) document.execCommand('formatBlock', false, rules[before]);
-  else document.execCommand(lists[before]);
+  // Build the new block directly: in an empty page the typed "#" is a bare line with no
+  // paragraph around it, and the browser's own formatting command made it vanish there.
+  const el = rules[before] ? document.createElement(rules[before]) : document.createElement(lists[before] === 'insertOrderedList' ? 'ol' : 'ul');
+  const target = rules[before] ? el : el.appendChild(document.createElement('li'));
+  target.append(document.createElement('br'));
+  block.replaceWith(el);
+  const caret = document.createRange();
+  caret.setStart(target, 0);
+  caret.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(caret);
+  updateEmpty();
   syncFromRich();
 });
 rich.addEventListener('input', () => {

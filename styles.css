@@ -276,3 +276,10 @@ nav .divider{width:auto;height:1px;margin:3px 10px}
 /* the writing column keeps clear of the menu on narrower screens */
 @media(max-width:1100px){body[data-mode=write]{padding-right:120px}}
 @media(max-width:650px){body[data-mode=write]{padding-right:96px}.header-right{right:8px}}
+
+/* writing tools share the line with the heading instead of wrapping below it */
+.page-heading{flex-wrap:nowrap}
+.eyebrow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.write-tools{flex:none}
+@media(max-width:1100px){.page-heading .small-line{display:none}}
+@media(max-width:820px){.page-heading .eyebrow{display:none}}
