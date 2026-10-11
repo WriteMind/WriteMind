@@ -309,3 +309,10 @@ body.menus-hidden #fullscreen.round-button{opacity:0;visibility:hidden;pointer-e
 .header-right nav .desktop{display:none}
 .header-right nav>button,.header-right nav>select,.header-right .modes button{padding-left:6px;padding-right:6px;font-size:11px}
 .header-right nav>select{padding-right:16px;background-position:right 6px center;text-overflow:ellipsis}
+
+/* ---------- text size ---------- */
+#rich{font-size:calc(21px * var(--text-scale, 1))}
+.editor[data-view=code] textarea{font-size:calc(15px * var(--text-scale, 1))}
+@media(max-width:650px){#rich{font-size:calc(18px * var(--text-scale, 1))}}
+.font-size{display:flex}
+.font-size button{min-width:34px;padding:6px 8px;font-family:var(--serif)}

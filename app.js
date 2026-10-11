@@ -569,6 +569,21 @@ window.addEventListener('load', () => { if (editor.dataset.view === 'rich') setV
 // Prepare the Markdown converter ahead of time so the first pause in typing doesn't stall.
 window.addEventListener('load', () => setTimeout(() => { try { if (window.TurndownService) ensureTurndown().turndown('<p>warm up</p>'); } catch {} }, 1500));
 
+// Text size: A− / A+ scale the writing (both views) and remember the choice.
+let textScale = 1;
+try { textScale = Math.min(1.6, Math.max(.8, parseFloat(localStorage.getItem('zen-text-scale')) || 1)); } catch {}
+function setTextScale(value) {
+  textScale = Math.round(Math.min(1.6, Math.max(.8, value)) * 10) / 10;
+  document.documentElement.style.setProperty('--text-scale', String(textScale));
+  document.querySelector('#text-smaller').disabled = textScale <= .8;
+  document.querySelector('#text-larger').disabled = textScale >= 1.6;
+  try { localStorage.setItem('zen-text-scale', String(textScale)); } catch {}
+  window.dispatchEvent(new Event('resize')); // re-fit the text box and the focus band
+}
+document.querySelector('#text-smaller').addEventListener('click', () => setTextScale(textScale - .1));
+document.querySelector('#text-larger').addEventListener('click', () => setTextScale(textScale + .1));
+setTextScale(textScale);
+
 // Focus mode: the line being written stays bright while the text above and below fades.
 const focusButton = document.querySelector('#focus-mode');
 let focusOn = false;
