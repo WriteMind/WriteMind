@@ -1199,7 +1199,7 @@ const board = (() => {
     if (kind(it) === 'text') return it;
     if (!labelled(it) || !it.label) return null;
     const b = labelBox(it);
-    return {t: 'text', label: true, k: it.k, x: b.x, y: b.y, w: Math.max(40, b.w), h: b.h, md: it.label, c: it.c};
+    return {t: 'text', label: true, k: it.k, x: b.x, y: b.y, w: Math.max(40, b.w), h: b.h, md: it.label, c: it.c, fs: it.fs};
   }
   function syncTexts() {
     layer.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
@@ -1212,6 +1212,7 @@ const board = (() => {
       let node = textNodes.get(it.k);
       if (!node) { node = document.createElement('div'); node.className = 'board-text md'; layer.append(node); textNodes.set(it.k, node); }
       node.classList.toggle('shape-label', isShape);
+      node.style.fontSize = `${(isShape || it.note ? 18 : 20) * (it.fs || 1)}px`;
       if (isShape) {
         const b = labelBox(it);
         node.style.left = `${b.x}px`;
@@ -1542,8 +1543,8 @@ const board = (() => {
       const hit = hitTest(p);
       if (hit && (kind(hit) === 'text' || labelled(hit))) { editText(hit); return; }
       const it = tool === 'note'
-        ? {t: 'text', note: true, k: newKey(), x: p.x - 110, y: p.y - 40, w: 220, md: '', c: color}
-        : {t: 'text', k: newKey(), x: p.x, y: p.y - 14, w: 340, md: '', c: color};
+        ? {t: 'text', note: true, k: newKey(), x: p.x - 110, y: p.y - 40, w: 220, md: '', c: color, ...(textSize !== 1 ? {fs: textSize} : {})}
+        : {t: 'text', k: newKey(), x: p.x, y: p.y - 14, w: 340, md: '', c: color, ...(textSize !== 1 ? {fs: textSize} : {})};
       commit([...items, it]);
       editText(it);
       return;
@@ -1821,6 +1822,24 @@ const board = (() => {
       redraw();
     } else if (tool !== 'connect') setTool('connect');
   });
+  // Text size: changes the selected text boxes, notes and shape text, or the size for new text.
+  let textSize = 1;
+  try { textSize = Math.min(3, Math.max(.6, parseFloat(localStorage.getItem('zen-board-text')) || 1)); } catch {}
+  function changeTextSize(step) {
+    const targets = selection.filter((it) => kind(it) === 'text' || (labelled(it) && it.label));
+    if (targets.length) {
+      const map = new Map(targets.map((it) => [it, {...it, fs: Math.round(Math.min(3, Math.max(.6, (it.fs || 1) + step)) * 10) / 10}]));
+      commit(items.map((x) => map.get(x) || x));
+      selection = selection.map((x) => map.get(x) || x);
+      redraw();
+      return;
+    }
+    textSize = Math.round(Math.min(3, Math.max(.6, textSize + step)) * 10) / 10;
+    try { localStorage.setItem('zen-board-text', String(textSize)); } catch {}
+    notify(`New text size: ${Math.round(textSize * 100)}%`);
+  }
+  document.querySelector('#board-text-smaller').addEventListener('click', () => changeTextSize(-.1));
+  document.querySelector('#board-text-larger').addEventListener('click', () => changeTextSize(.1));
   document.querySelector('#board-size').addEventListener('click', (e) => { size = (size + 1) % sizes.length; e.currentTarget.textContent = sizes[size][0]; });
   document.querySelector('#board-undo').addEventListener('click', undo);
   document.querySelector('#board-redo').addEventListener('click', redo);
@@ -1865,8 +1884,8 @@ const board = (() => {
     div.innerHTML = markdownToHTML(it.md) ?? escapeHTML(it.md);
     const inner = new XMLSerializer().serializeToString(div).replace(/^<div[^>]*>|<\/div>$/g, '');
     const col = it.note ? css('--note-text') : palette()[it.c] || palette().ink;
-    const note = it.note ? `background:${escapeHTML(css(`--note-${it.c}`) || css('--note-ink'))};padding:16px 18px;border-radius:4px 4px 14px 4px;min-height:150px;box-sizing:border-box;font-size:18px;` : '';
-    return `<div xmlns="http://www.w3.org/1999/xhtml" style="font:20px/1.6 'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;color:${escapeHTML(col)};width:${it.w}px;${note}"><style>.katex-html{display:none}p,h1,h2,h3,ul,ol,pre,blockquote{margin:0 0 .5em}h1,h2,h3{font-weight:400}code{font-family:monospace}img{max-width:100%}</style>${inner}</div>`;
+    const note = it.note ? `background:${escapeHTML(css(`--note-${it.c}`) || css('--note-ink'))};padding:16px 18px;border-radius:4px 4px 14px 4px;min-height:150px;box-sizing:border-box;font-size:${18 * (it.fs || 1)}px;` : '';
+    return `<div xmlns="http://www.w3.org/1999/xhtml" style="font:${(it.label ? 18 : 20) * (it.fs || 1)}px/1.6 'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;color:${escapeHTML(col)};width:${it.w}px;${note}"><style>.katex-html{display:none}p,h1,h2,h3,ul,ol,pre,blockquote{margin:0 0 .5em}h1,h2,h3{font-weight:400}code{font-family:monospace}img{max-width:100%}</style>${inner}</div>`;
   }
   const textSVG = (it) => `<foreignObject x="${it.x}" y="${it.y}" width="${it.w}" height="${(it.h || 48) + 8}">${textXHTML(it)}</foreignObject>`;
   function wrapText(c, it, colors) {
@@ -1988,8 +2007,8 @@ const board = (() => {
       const k = raw.t || 's', c = typeof raw.c === 'string' ? raw.c : 'ink', w = num(raw.w) ? raw.w : 2;
       const key = typeof raw.k === 'string' && /^[\w-]{1,40}$/.test(raw.k) ? raw.k : newKey();
       if (k === 's' && Array.isArray(raw.pts) && raw.pts.length >= 2 && raw.pts.every(num)) next.push({c, w, pts: raw.pts, ...(Array.isArray(raw.pr) && raw.pr.length * 2 === raw.pts.length && raw.pr.every(num) ? {pr: raw.pr} : {})});
-      else if (shapes.includes(k) && [raw.x1, raw.y1, raw.x2, raw.y2].every(num)) next.push({t: k, k: key, c, w, ...(typeof raw.label === 'string' && raw.label ? {label: raw.label} : {}), x1: raw.x1, y1: raw.y1, x2: raw.x2, y2: raw.y2});
-      else if (k === 'text' && typeof raw.md === 'string' && num(raw.x) && num(raw.y)) next.push({t: 'text', ...(raw.note === true ? {note: true} : {}), k: key, x: raw.x, y: raw.y, w: num(raw.w) ? raw.w : 340, md: raw.md, c});
+      else if (shapes.includes(k) && [raw.x1, raw.y1, raw.x2, raw.y2].every(num)) next.push({t: k, k: key, c, w, ...(typeof raw.label === 'string' && raw.label ? {label: raw.label} : {}), ...(num(raw.fs) ? {fs: raw.fs} : {}), x1: raw.x1, y1: raw.y1, x2: raw.x2, y2: raw.y2});
+      else if (k === 'text' && typeof raw.md === 'string' && num(raw.x) && num(raw.y)) next.push({t: 'text', ...(raw.note === true ? {note: true} : {}), ...(num(raw.fs) ? {fs: raw.fs} : {}), k: key, x: raw.x, y: raw.y, w: num(raw.w) ? raw.w : 340, md: raw.md, c});
       else if (k === 'img' && [raw.x, raw.y, raw.w, raw.h].every(num)) {
         let id = null;
         try {
