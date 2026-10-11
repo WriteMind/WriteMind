@@ -293,3 +293,9 @@ nav .divider{width:auto;height:1px;margin:3px 10px}
 body.board-clean .board-quick{display:grid;grid-template-columns:1fr 1fr;gap:0;width:76px;height:76px;padding:6px;border-radius:50%;place-items:center}
 body.board-clean .board-quick button{width:30px;min-height:30px;height:30px}
 body.board-clean .board-quick svg{width:15px;height:15px}
+
+/* ---------- text inside shapes ---------- */
+.board-text.shape-label{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden;font-size:18px;line-height:1.4;padding:4px 8px;box-sizing:border-box}
+.board-text.shape-label>*{margin:0}
+.board-text.shape-label.editing{justify-content:center}
+.board-text.shape-label textarea{margin:0;text-align:center;width:100%;min-height:28px;border-style:dashed;background:color-mix(in srgb,var(--paper) 85%,transparent)}

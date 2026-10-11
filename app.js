@@ -1167,15 +1167,48 @@ const board = (() => {
   }
 
   // Markdown text boxes live in an HTML layer that pans and zooms with the canvas.
+  // Rectangles, circles and triangles can hold Markdown text, centred inside them.
+  const labelled = (it) => ['rect', 'ellipse', 'triangle'].includes(kind(it));
+  function labelBox(it) {
+    const x = Math.min(it.x1, it.x2), y = Math.min(it.y1, it.y2), w = Math.abs(it.x2 - it.x1), h = Math.abs(it.y2 - it.y1);
+    if (kind(it) === 'ellipse') return {x: x + w * .15, y: y + h * .15, w: w * .7, h: h * .7};
+    if (kind(it) === 'triangle') return {x: x + w * .25, y: y + h * .45, w: w * .5, h: h * .5};
+    return {x, y, w, h};
+  }
+  // A text-like view of any item that shows text: text boxes, notes and labelled shapes.
+  function textView(it) {
+    if (kind(it) === 'text') return it;
+    if (!labelled(it) || !it.label) return null;
+    const b = labelBox(it);
+    return {t: 'text', label: true, k: it.k, x: b.x, y: b.y, w: Math.max(40, b.w), h: b.h, md: it.label, c: it.c};
+  }
   function syncTexts() {
     layer.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
     const colors = palette();
     const seen = new Set();
     for (const it of items) {
-      if (kind(it) !== 'text') continue;
+      const isShape = labelled(it);
+      if (kind(it) !== 'text' && !(isShape && (it.label || editing === it.k))) continue;
       seen.add(it.k);
       let node = textNodes.get(it.k);
       if (!node) { node = document.createElement('div'); node.className = 'board-text md'; layer.append(node); textNodes.set(it.k, node); }
+      node.classList.toggle('shape-label', isShape);
+      if (isShape) {
+        const b = labelBox(it);
+        node.style.left = `${b.x}px`;
+        node.style.top = `${b.y}px`;
+        node.style.width = `${Math.max(40, b.w)}px`;
+        node.style.height = `${Math.max(28, b.h)}px`;
+        node.style.color = colors[it.c] || colors.ink;
+        node.classList.toggle('selected', false);
+        if (editing === it.k) continue;
+        if (node.dataset.md !== it.label || node.querySelector('textarea')) {
+          node.dataset.md = it.label;
+          node.innerHTML = markdownToHTML(it.label) ?? escapeHTML(it.label);
+        }
+        continue;
+      }
+      node.style.height = '';
       node.style.left = `${it.x}px`;
       node.style.top = `${it.y}px`;
       node.style.width = `${it.w}px`;
@@ -1200,8 +1233,8 @@ const board = (() => {
     const node = textNodes.get(it.k);
     node.classList.add('editing');
     const area = document.createElement('textarea');
-    area.value = it.md;
-    area.placeholder = it.note ? 'Note…' : 'Markdown or $math$…';
+    area.value = labelled(it) ? it.label || '' : it.md;
+    area.placeholder = labelled(it) ? 'Text…' : it.note ? 'Note…' : 'Markdown or $math$…';
     area.spellcheck = true;
     node.replaceChildren(area);
     const fit = () => { area.style.height = 'auto'; area.style.height = `${area.scrollHeight}px`; };
@@ -1222,6 +1255,12 @@ const board = (() => {
     node?.classList.remove('editing');
     const it = items.find((x) => x.k === key);
     if (!it) return;
+    if (labelled(it)) { // a shape keeps existing even when its text is cleared
+      const label = md.trim() ? md : '';
+      if (label !== (it.label || '')) commit(items.map((x) => (x === it ? {...it, label} : x)));
+      else redraw();
+      return;
+    }
     if (!md.trim() && it.md === '') { items = items.filter((x) => x !== it); past.pop(); persist(); redraw(); }
     else if (!md.trim()) commit(items.filter((x) => x !== it));
     else if (md !== it.md) commit(items.map((x) => (x === it ? {...it, md} : x)));
@@ -1482,7 +1521,7 @@ const board = (() => {
     if (tool === 'eraser') { const hit = hitTest(p); if (hit) commit(items.filter((x) => x !== hit)); return; }
     if (tool === 'text' || tool === 'note') {
       const hit = hitTest(p);
-      if (hit && kind(hit) === 'text') { editText(hit); return; }
+      if (hit && (kind(hit) === 'text' || labelled(hit))) { editText(hit); return; }
       const it = tool === 'note'
         ? {t: 'text', note: true, k: newKey(), x: p.x - 110, y: p.y - 40, w: 220, md: '', c: color}
         : {t: 'text', k: newKey(), x: p.x, y: p.y - 14, w: 340, md: '', c: color};
@@ -1494,7 +1533,7 @@ const board = (() => {
       if (onHandle(p)) { drag = {mode: 'resize', start: p, orig: selection[0], before: items}; return; }
       const hit = hitTest(p);
       // Double-tap a text box or note to edit it (touch screens get no dblclick here).
-      if (hit && kind(hit) === 'text' && lastTap.k === hit.k && e.timeStamp - lastTap.t < 400) { lastTap = {}; activeId = null; editText(hit); return; }
+      if (hit && (kind(hit) === 'text' || labelled(hit)) && lastTap.k === hit.k && e.timeStamp - lastTap.t < 400) { lastTap = {}; activeId = null; editText(hit); return; }
       lastTap = hit ? {k: hit.k, t: e.timeStamp} : {};
       if (hit) {
         if (e.shiftKey) selection = isSelected(hit) ? selection.filter((x) => x !== hit) : [...selection, hit];
@@ -1524,7 +1563,7 @@ const board = (() => {
   });
   canvas.addEventListener('dblclick', (e) => {
     const s = local(e), hit = hitTest(toWorld(s.x, s.y));
-    if (hit && kind(hit) === 'text') editText(hit);
+    if (hit && (kind(hit) === 'text' || labelled(hit))) editText(hit);
     else if (tool === 'select' && !hit) { setTool('text'); }
   });
   canvas.addEventListener('pointermove', (e) => {
@@ -1843,8 +1882,10 @@ const board = (() => {
     c.lineCap = 'round';
     c.lineJoin = 'round';
     const colors = palette();
-    for (const it of items) {
-      if (kind(it) !== 'text') { drawItem(c, it, colors); continue; }
+    for (const item of items) {
+      if (kind(item) !== 'text') drawItem(c, item, colors);
+      const it = textView(item);
+      if (!it) continue;
       if (!richText) { wrapText(c, it, colors); continue; }
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${it.w}" height="${(it.h || 48) + 8}">${textSVG({...it, x: 0, y: 0})}</svg>`;
       const img = new Image();
@@ -1890,6 +1931,7 @@ const board = (() => {
         }
       }
     }
+    for (const it of items) if (labelled(it) && it.label) parts.push(textSVG(textView(it))); // text inside shapes, on top
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${e.x} ${e.y} ${e.w} ${e.h}" width="${Math.round(e.w)}" height="${Math.round(e.h)}"><rect x="${e.x}" y="${e.y}" width="${e.w}" height="${e.h}" fill="${escapeHTML(css('--paper'))}"/>${parts.join('')}</svg>`;
   }
   const boardExport = document.querySelector('#board-export');
@@ -1927,7 +1969,7 @@ const board = (() => {
       const k = raw.t || 's', c = typeof raw.c === 'string' ? raw.c : 'ink', w = num(raw.w) ? raw.w : 2;
       const key = typeof raw.k === 'string' && /^[\w-]{1,40}$/.test(raw.k) ? raw.k : newKey();
       if (k === 's' && Array.isArray(raw.pts) && raw.pts.length >= 2 && raw.pts.every(num)) next.push({c, w, pts: raw.pts, ...(Array.isArray(raw.pr) && raw.pr.length * 2 === raw.pts.length && raw.pr.every(num) ? {pr: raw.pr} : {})});
-      else if (shapes.includes(k) && [raw.x1, raw.y1, raw.x2, raw.y2].every(num)) next.push({t: k, k: key, c, w, x1: raw.x1, y1: raw.y1, x2: raw.x2, y2: raw.y2});
+      else if (shapes.includes(k) && [raw.x1, raw.y1, raw.x2, raw.y2].every(num)) next.push({t: k, k: key, c, w, ...(typeof raw.label === 'string' && raw.label ? {label: raw.label} : {}), x1: raw.x1, y1: raw.y1, x2: raw.x2, y2: raw.y2});
       else if (k === 'text' && typeof raw.md === 'string' && num(raw.x) && num(raw.y)) next.push({t: 'text', ...(raw.note === true ? {note: true} : {}), k: key, x: raw.x, y: raw.y, w: num(raw.w) ? raw.w : 340, md: raw.md, c});
       else if (k === 'img' && [raw.x, raw.y, raw.w, raw.h].every(num)) {
         let id = null;
@@ -1969,7 +2011,7 @@ const board = (() => {
     if (mod && key === 'd' && selection.length) { e.preventDefault(); pasteItems(selection); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length) { e.preventDefault(); deleteSelection(); return; }
     if (e.key === 'Escape' && selection.length) { selection = []; redraw(); return; }
-    if (e.key === 'Enter' && selection.length === 1 && kind(selection[0]) === 'text') { e.preventDefault(); editText(selection[0]); return; }
+    if (e.key === 'Enter' && selection.length === 1 && (kind(selection[0]) === 'text' || labelled(selection[0]))) { e.preventDefault(); editText(selection[0]); return; }
     if (e.key === ' ' && !spaceHeld) { spaceHeld = true; canvas.classList.add('panning'); e.preventDefault(); }
     const keys = {p: 'pen', e: 'eraser', h: 'hand', v: 'select', r: 'rect', o: 'ellipse', t: 'triangle', l: 'line', a: 'arrow', x: 'text', n: 'note', c: 'connect'};
     if (!mod && !e.altKey && keys[key]) setTool(keys[key]);
