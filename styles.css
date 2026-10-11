@@ -299,3 +299,13 @@ body.board-clean .board-quick svg{width:15px;height:15px}
 .board-text.shape-label>*{margin:0}
 .board-text.shape-label.editing{justify-content:center}
 .board-text.shape-label textarea{margin:0;text-align:center;width:100%;min-height:28px;border-style:dashed;background:color-mix(in srgb,var(--paper) 85%,transparent)}
+
+/* full screen sits as a round button above the eye; slimmer menu */
+#fullscreen.round-button{align-self:center;width:44px;height:44px;min-height:0;padding:0;justify-content:center;background:var(--glass);border:1px solid var(--line);box-shadow:0 8px 30px -12px rgba(20,30,40,.18)}
+#fullscreen.round-button svg{width:17px;height:17px}
+body.menus-hidden #fullscreen.round-button{opacity:0;visibility:hidden;pointer-events:none}
+.header-right nav{width:92px}
+.header-right .modes{width:92px}
+.header-right nav .desktop{display:none}
+.header-right nav>button,.header-right nav>select,.header-right .modes button{padding-left:6px;padding-right:6px;font-size:11px}
+.header-right nav>select{padding-right:16px;background-position:right 6px center;text-overflow:ellipsis}

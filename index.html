@@ -14,13 +14,13 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%237f9590' stroke-width='3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
   <!-- Bump ?v= on styles.css and app.js with every change, so browsers never pair a new page with an old cached file. -->
-  <link rel="stylesheet" href="styles.css?v=20261011-5">
+  <link rel="stylesheet" href="styles.css?v=20261011-6">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/turndown/7.1.2/turndown.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" defer></script>
-  <script src="app.js?v=20261011-5" defer></script>
+  <script src="app.js?v=20261011-6" defer></script>
 </head>
 <body class="intro" data-mode="write">
   <header>
@@ -40,9 +40,9 @@
         <button id="load" class="write-only" type="button">Load<span class="desktop"> .md</span></button>
         <label class="sr-only" for="theme">Theme</label>
         <select id="theme" title="Theme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="sepia">Sepia</option></select>
-        <button id="fullscreen" type="button" aria-pressed="false" title="Full screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="sr-only">Full screen</span></button>
         <button id="save" class="save write-only" type="button">Save<span class="desktop"> .md</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4"/></svg></button>
       </nav>
+        <button id="fullscreen" class="round-button" type="button" aria-pressed="false" title="Full screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="sr-only">Full screen</span></button>
       <button id="hide-menus" type="button" aria-pressed="false" title="Hide or show menus (Esc shows them)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="sr-only">Hide menus</span></button>
     </div>
   </header>
