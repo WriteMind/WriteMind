@@ -14,13 +14,13 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%237f9590' stroke-width='3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
   <!-- Bump ?v= on styles.css and app.js with every change, so browsers never pair a new page with an old cached file. -->
-  <link rel="stylesheet" href="styles.css?v=20261011-2">
+  <link rel="stylesheet" href="styles.css?v=20261011-3">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/turndown/7.1.2/turndown.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" defer></script>
-  <script src="app.js?v=20261011-2" defer></script>
+  <script src="app.js?v=20261011-3" defer></script>
 </head>
 <body class="intro" data-mode="write">
   <header>
@@ -98,7 +98,8 @@
       <button type="button" id="board-undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg><span class="sr-only">Undo</span></button>
       <button type="button" id="board-redo" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg><span class="sr-only">Redo</span></button>
       <button type="button" id="board-delete" title="Delete selection (Del)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg><span class="sr-only">Delete</span></button>
-      <button type="button" id="board-home" title="Back to centre"><span id="board-zoom">100%</span></button>
+      <button type="button" id="board-home" title="Center at 100%"><span id="board-zoom">100%</span></button>
+      <button type="button" id="board-fit" title="Fit everything on screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg><span class="sr-only">Fit</span></button>
       <label class="sr-only" for="board-export">Export board</label>
       <select id="board-export" title="Export the board"><option value="" selected disabled>Export</option><option value="png">PNG image</option><option value="jpg">JPG image</option><option value="svg">SVG (vector)</option><option value="pdf">PDF (print)</option><option value="json">Board file (.json)</option></select>
       <label class="board-open" for="board-import-file" title="Open a board file (.json)" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Open</label>

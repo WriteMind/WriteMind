@@ -1767,6 +1767,14 @@ const board = (() => {
   document.querySelector('#board-undo').addEventListener('click', undo);
   document.querySelector('#board-redo').addEventListener('click', redo);
   document.querySelector('#board-home').addEventListener('click', () => { view = {x: canvas.clientWidth / 2, y: canvas.clientHeight / 2, z: 1}; persist(); redraw(); });
+  // Fit: zoom and centre so everything on the board is in view.
+  document.querySelector('#board-fit').addEventListener('click', () => {
+    if (!items.length) { view = {x: canvas.clientWidth / 2, y: canvas.clientHeight / 2, z: 1}; persist(); redraw(); return; }
+    const e = extent(), z = Math.min(2, Math.max(.05, Math.min(canvas.clientWidth / e.w, canvas.clientHeight / e.h) * .9));
+    view = {x: canvas.clientWidth / 2 - (e.x + e.w / 2) * z, y: canvas.clientHeight / 2 - (e.y + e.h / 2) * z, z};
+    persist();
+    redraw();
+  });
   document.querySelector('#board-clear').addEventListener('click', () => {
     if (items.length && window.confirm('Clear the whole board? You can undo this.')) { selection = []; commit([]); }
   });
