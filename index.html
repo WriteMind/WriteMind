@@ -14,17 +14,17 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%237f9590' stroke-width='3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
   <!-- Bump ?v= on styles.css and app.js with every change, so browsers never pair a new page with an old cached file. -->
-  <link rel="stylesheet" href="styles.css?v=20261011-9">
+  <link rel="stylesheet" href="styles.css?v=20261012-1">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/turndown/7.1.2/turndown.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" defer></script>
-  <script src="app.js?v=20261011-9" defer></script>
+  <script src="app.js?v=20261012-1" defer></script>
 </head>
 <body class="intro" data-mode="write">
   <header>
-    <a class="brand" href="./" aria-label="Zen writing home"><span class="enso" aria-hidden="true"></span>Zen<span class="brand-note">a quiet place to write</span></a>
+    <div class="brand"><button id="theme-toggle" class="enso" type="button" title="Change theme" aria-label="Change theme"></button><a class="brand-link" href="./" aria-label="Zen writing home">Zen</a><span class="brand-note">a quiet place to write</span></div>
     <div class="header-right">
       <div class="modes" role="group" aria-label="Space">
         <button type="button" data-mode="write" aria-pressed="true">Write</button>
@@ -38,8 +38,10 @@
         <label class="sr-only" for="restore">Restore a backup from a previous session</label>
         <select id="restore" class="write-only" title="Drafts from your last two sessions" hidden></select>
         <button id="load" class="write-only" type="button">Load<span class="desktop"> .md</span></button>
-        <label class="sr-only" for="theme">Theme</label>
-        <select id="theme" title="Theme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="sepia">Sepia</option></select>
+        <select id="theme" title="Theme" hidden><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="sepia">Sepia</option></select>
+        <button id="add-image" class="write-only" type="button" title="Add a picture (you can also paste or drop one)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>Picture</button>
+        <label class="sr-only" for="export-writing">Export writing</label>
+        <select id="export-writing" class="write-only" title="Export your writing"><option value="" selected disabled>Export</option><option value="md">Markdown (.md)</option><option value="html">Web page (.html)</option><option value="pdf">PDF (print)</option><option value="txt">Plain text (.txt)</option></select>
         <button id="save" class="save write-only" type="button">Save<span class="desktop"> .md</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4"/></svg></button>
       </nav>
         <button id="fullscreen" class="round-button" type="button" aria-pressed="false" title="Full screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="sr-only">Full screen</span></button>
@@ -52,12 +54,10 @@
       <div class="write-tools">
         <button id="write-undo" type="button" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg><span class="sr-only">Undo</span></button>
         <button id="write-redo" type="button" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg><span class="sr-only">Redo</span></button>
-        <button id="add-image" type="button" title="Add a picture (you can also paste or drop one)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>Picture</button>
         <span class="font-size" role="group" aria-label="Text size"><button id="text-smaller" type="button" title="Smaller text">A−</button><button id="text-larger" type="button" title="Larger text">A+</button></span>
+        <button id="clear-writing" type="button" title="Clear all writing (kept under Backups)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Clear</button>
         <button id="focus-mode" type="button" aria-pressed="false" title="Focus mode: dim everything except the line you are writing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 6h12M6 18h12" opacity=".35"/><path d="M3 12h18" stroke-width="2.2"/></svg>Focus</button>
         <button id="code-view" type="button" aria-pressed="false" title="Show the Markdown code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg>Code</button>
-        <label class="sr-only" for="export-writing">Export writing</label>
-        <select id="export-writing" title="Export your writing"><option value="" selected disabled>Export</option><option value="md">Markdown (.md)</option><option value="html">Web page (.html)</option><option value="pdf">PDF (print)</option><option value="txt">Plain text (.txt)</option></select>
       </div>
     </div>
     <div class="editor" data-view="rich">

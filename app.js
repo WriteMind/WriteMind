@@ -251,6 +251,14 @@ function applyTheme(theme) {
   window.dispatchEvent(new Event('zen-theme'));
 }
 themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
+// The circle next to "Zen" cycles through the themes.
+const themeOrder = ['auto', 'light', 'dark', 'sepia'], themeNames = {auto: 'Auto (follows your device)', light: 'Light', dark: 'Dark', sepia: 'Sepia'};
+document.querySelector('#theme-toggle').addEventListener('click', () => {
+  const next = themeOrder[(themeOrder.indexOf(themeSelect.value) + 1) % themeOrder.length];
+  applyTheme(next);
+  document.querySelector('#theme-toggle').title = `Theme: ${themeNames[next]} — tap to change`;
+  notify(`Theme: ${themeNames[next]}`);
+});
 darkQuery.addEventListener?.('change', () => { if (themeSelect.value === 'auto') applyTheme('auto'); });
 applyTheme(document.documentElement.dataset.theme || 'auto');
 
@@ -336,6 +344,7 @@ function renderBackups() {
     const words = b.text.trim().split(/\s+/).slice(0, 4).join(' ');
     restoreSelect.append(new Option(`${when} — ${words}…`, String(i)));
   });
+  if (list.length) restoreSelect.append(new Option('Clear all backups', 'clear'));
   restoreSelect.value = '';
   restoreSelect.hidden = list.length === 0;
 }
@@ -351,6 +360,14 @@ try {
 } catch {}
 renderBackups();
 restoreSelect.addEventListener('change', () => {
+  if (restoreSelect.value === 'clear') {
+    restoreSelect.value = '';
+    if (!window.confirm('Delete both saved backups? Your current writing is not affected.')) return;
+    try { localStorage.removeItem(backupKey); } catch {}
+    renderBackups();
+    notify('Backups cleared');
+    return;
+  }
   const backup = readBackups()[Number(restoreSelect.value)];
   restoreSelect.value = '';
   if (!backup) return;
@@ -360,6 +377,24 @@ restoreSelect.addEventListener('change', () => {
   refresh();
   persist();
   document.querySelector('#announcement').textContent = 'Backup restored';
+  focusEditor();
+});
+
+// Clear all writing. The text is kept as a backup first, so it can be restored from Backups.
+document.querySelector('#clear-writing').addEventListener('click', () => {
+  flushRich();
+  if (!writing.value.trim()) return;
+  if (!window.confirm('Clear all your writing? It will be kept under Backups, so you can bring it back.')) return;
+  try {
+    const list = readBackups().filter((b) => b.text !== writing.value);
+    list.unshift({text: writing.value, filename, time: Date.now()});
+    localStorage.setItem(backupKey, JSON.stringify(list.slice(0, 2)));
+  } catch {}
+  writing.value = '';
+  refresh();
+  persist();
+  renderBackups();
+  notify('Cleared — your writing is saved under Backups');
   focusEditor();
 });
 
@@ -690,8 +725,31 @@ if (debugOn) {
 function currentBlock() {
   const sel = getSelection();
   let node = sel.anchorNode;
+  // Safari can report the caret on the editor itself rather than inside the text it follows.
+  if (node === rich) node = rich.childNodes[Math.max(0, sel.anchorOffset - 1)] || null;
   while (node && node.parentNode !== rich) node = node.parentNode;
   return node;
+}
+const blockShortcuts = {'#': 'h1', '##': 'h2', '###': 'h3', '>': 'blockquote', '-': 'ul', '*': 'ul', '1.': 'ol'};
+// Turns the current line into a heading, quote or list. Runs after the space is typed, so it works
+// whatever kind of space the browser inserted (Safari on the Mac often uses a non-breaking one).
+function applyBlockShortcut() {
+  const block = currentBlock();
+  const match = block && block.textContent.match(/^(#{1,3}|>|[-*]|1\.)[\s\u00a0]$/);
+  if (!match) return false;
+  const tag = blockShortcuts[match[1]];
+  const el = document.createElement(tag);
+  const target = tag === 'ul' || tag === 'ol' ? el.appendChild(document.createElement('li')) : el;
+  target.append(document.createElement('br'));
+  block.replaceWith(el);
+  const caret = document.createRange(), sel = getSelection();
+  caret.setStart(target, 0);
+  caret.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(caret);
+  updateEmpty();
+  syncFromRich();
+  return true;
 }
 rich.addEventListener('beforeinput', (e) => {
   if (e.inputType !== 'insertText' || e.data !== ' ') return;
@@ -720,6 +778,7 @@ rich.addEventListener('beforeinput', (e) => {
 });
 rich.addEventListener('input', () => {
   updateEmpty(); // the placeholder disappears with the very first letter
+  if (applyBlockShortcut()) return;
   // **bold**, *italic* and `code` turn into formatting as soon as they close.
   const sel = getSelection();
   const node = sel.anchorNode;

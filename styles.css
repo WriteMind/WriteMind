@@ -317,3 +317,11 @@ body.menus-hidden #fullscreen.round-button{opacity:0;visibility:hidden;pointer-e
 .font-size{display:flex}
 .font-size button{min-width:34px;padding:6px 8px;font-family:var(--serif)}
 .text-size-btn{font-family:var(--serif);min-width:34px}
+
+/* ---------- brand: circle is the theme switcher ---------- */
+.brand-link{color:inherit;text-decoration:none}
+button.enso{padding:0;min-height:0;background:transparent;cursor:pointer}
+button.enso:hover{box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 18%,transparent)}
+/* picture and export now live in the vertical menu */
+.header-right nav #add-image svg{display:none}
+.header-right nav #export-writing{color:var(--muted)}
