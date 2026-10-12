@@ -1296,11 +1296,13 @@ const board = (() => {
       node.style.setProperty('--note', it.note ? css(`--note-${it.c}`) || css('--note-ink') : '');
       node.classList.toggle('selected', isSelected(it));
       if (editing === it.k) continue;
+      const sizeKey = `${it.w}|${it.fs || 1}|${it.note ? 1 : 0}`;
       if (node.dataset.md !== it.md || node.querySelector('textarea')) {
         node.dataset.md = it.md;
         node.innerHTML = markdownToHTML(it.md) ?? escapeHTML(it.md);
+        node.dataset.size = '';
       }
-      it.h = node.offsetHeight;
+      if (node.dataset.size !== sizeKey || !it.h) { it.h = node.offsetHeight; node.dataset.size = sizeKey; }
     }
     for (const [k, node] of textNodes) if (!seen.has(k)) { node.remove(); textNodes.delete(k); }
   }
@@ -1484,11 +1486,31 @@ const board = (() => {
     ctx.stroke();
   }
   const redrawLive = () => { liveFrame ??= requestAnimationFrame(drawLive); };
+  // Saving copies the whole board, which gets slow once it holds many strokes. So it waits for a
+  // pause (never while the pen is down), and stroke points are stored as compact typed arrays,
+  // which the browser copies far faster than plain number lists. Each stroke is converted once.
+  const compactCache = new WeakMap();
+  const round2 = (v) => Math.round(v * 100) / 100;
+  function expand(it) { // stored typed arrays back to plain lists
+    if (kind(it) !== 's' || !ArrayBuffer.isView(it.pts)) return it;
+    return {...it, pts: Array.from(it.pts, round2), ...(it.pr ? {pr: Array.from(it.pr, (v) => Math.round(v * 1000) / 1000)} : {})};
+  }
+  function compact(it) {
+    if (kind(it) !== 's') return it;
+    let c = compactCache.get(it);
+    if (!c) { c = {...it, pts: Float32Array.from(it.pts), ...(it.pr ? {pr: Float32Array.from(it.pr)} : {})}; compactCache.set(it, c); }
+    return c;
+  }
   function persist() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => idb('board', 'readwrite', (s) => s.put({items, view}, 'main')).catch(() => {
-      status.textContent = 'The board could not be saved on this device';
-    }), 400);
+    saveTimer = setTimeout(function save() {
+      if (activeId != null) { saveTimer = setTimeout(save, 800); return; }
+      const started = performance.now();
+      const data = {items: items.map(compact), view: {...view}};
+      idb('board', 'readwrite', (s) => s.put(data, 'main')).then(() => dbg('board: save ms', Math.round(performance.now() - started))).catch(() => {
+        status.textContent = 'The board could not be saved on this device';
+      });
+    }, 1500);
   }
   function commit(next, silent = false, live = null) {
     next = pruneConnectors(next);
@@ -2125,7 +2147,7 @@ const board = (() => {
       view = {x: canvas.clientWidth / 2, y: canvas.clientHeight / 2, z: 1};
       try {
         const saved = await idb('board', 'readonly', (s) => s.get('main'));
-        if (saved) { items = (saved.items || saved.strokes || []).map((it) => (kind(it) !== 's' && !it.k ? {...it, k: newKey()} : it)); view = saved.view || view; }
+        if (saved) { items = (saved.items || saved.strokes || []).map((it) => (kind(it) !== 's' && !it.k ? {...it, k: newKey()} : it)).map(expand); view = saved.view || view; }
       } catch {}
       setTool('pen');
       redraw();
