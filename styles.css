@@ -325,3 +325,4 @@ button.enso:hover{box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 18%,trans
 /* picture and export now live in the vertical menu */
 .header-right nav #add-image svg{display:none}
 .header-right nav #export-writing{color:var(--muted)}
+.header-right nav #clear-writing svg{display:none}
