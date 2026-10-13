@@ -1948,8 +1948,57 @@ const board = (() => {
     persist();
     redraw();
   });
-  document.querySelector('#board-clear').addEventListener('click', () => {
-    if (items.length && window.confirm('Clear the whole board? You can undo this.')) { selection = []; commit([]); }
+  // Board backups: the board from the last two sessions, and the board just before a Clear.
+  const boardBackupList = document.querySelector('#board-backups');
+  async function readBoardBackups() {
+    try { const list = await idb('board', 'readonly', (s) => s.get('backups')); return Array.isArray(list) ? list : []; }
+    catch { return []; }
+  }
+  async function addBoardBackup(list = items) {
+    if (!list.length) return;
+    const backups = (await readBoardBackups()).slice(0, 1);
+    backups.unshift({time: Date.now(), count: list.length, view: {...view}, items: list.map(compact)});
+    await idb('board', 'readwrite', (s) => s.put(backups, 'backups')).catch(() => {});
+    renderBoardBackups();
+  }
+  async function renderBoardBackups() {
+    const backups = await readBoardBackups();
+    const label = new Option('Backups', '');
+    label.disabled = true;
+    boardBackupList.replaceChildren(label);
+    backups.forEach((b, i) => {
+      const when = new Date(b.time).toLocaleString([], {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
+      boardBackupList.append(new Option(`${when} — ${b.count} item${b.count === 1 ? '' : 's'}`, String(i)));
+    });
+    if (backups.length) boardBackupList.append(new Option('Clear all backups', 'clear'));
+    boardBackupList.value = '';
+    boardBackupList.hidden = !backups.length;
+  }
+  boardBackupList.addEventListener('change', async () => {
+    const choice = boardBackupList.value;
+    boardBackupList.value = '';
+    if (choice === 'clear') {
+      if (!window.confirm('Delete the saved board backups? Your current board is not affected.')) return;
+      await idb('board', 'readwrite', (s) => s.delete('backups')).catch(() => {});
+      renderBoardBackups();
+      notify('Board backups cleared');
+      return;
+    }
+    const backup = (await readBoardBackups())[Number(choice)];
+    if (!backup) return;
+    if (items.length && !window.confirm('Replace the current board with this backup? You can undo this.')) return;
+    finishEditing();
+    selection = [];
+    commit(backup.items.map(expand));
+    if (backup.view) view = {...backup.view};
+    redraw();
+    notify('Board backup restored — Undo brings back the board you had');
+  });
+  document.querySelector('#board-clear').addEventListener('click', async () => {
+    if (!items.length || !window.confirm('Clear the whole board? It will be kept under Backups, and you can undo this.')) return;
+    await addBoardBackup();
+    selection = [];
+    commit([]);
   });
   function deleteSelection() {
     if (!selection.length) return;
@@ -2164,6 +2213,15 @@ const board = (() => {
         const saved = await idb('board', 'readonly', (s) => s.get('main'));
         if (saved) { items = (saved.items || saved.strokes || []).map((it) => (kind(it) !== 's' && !it.k ? {...it, k: newKey()} : it)).map(expand); view = saved.view || view; }
       } catch {}
+      // Once per browser session, keep the board as it was when this session started.
+      try {
+        if (!sessionStorage.getItem('zen-board-session')) {
+          sessionStorage.setItem('zen-board-session', '1');
+          const last = (await readBoardBackups())[0];
+          if (items.length && !(last && last.count === items.length && JSON.stringify(last.items.map(expand)) === JSON.stringify(items))) await addBoardBackup();
+        }
+      } catch {}
+      renderBoardBackups();
       setTool('pen');
       redraw();
     }
