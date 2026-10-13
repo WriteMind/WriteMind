@@ -1801,6 +1801,21 @@ const board = (() => {
       if (now - since >= 1000) { dbg('pen moves/s', Math.round(moves * 1000 / (now - since))); moves = 0; since = now; }
     }, true);
   }
+  // Zoom buttons (around the zoom percentage) zoom about the middle of the screen.
+  const zoomStep = (factor) => { zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, factor); clearTimeout(settleTimer); settleTimer = setTimeout(redraw, 60); };
+  document.querySelector('#board-zoom-in').addEventListener('click', () => zoomStep(1.25));
+  document.querySelector('#board-zoom-out').addEventListener('click', () => zoomStep(1 / 1.25));
+  // Safari on the Mac reports trackpad pinches as its own gesture events rather than Ctrl + scroll.
+  let gestureScale = 1;
+  canvas.addEventListener('gesturestart', (e) => { e.preventDefault(); gestureScale = 1; });
+  canvas.addEventListener('gesturechange', (e) => {
+    e.preventDefault();
+    if (touches.size) return; // on iPad the two-finger pinch is already handled by touch
+    const s = local(e);
+    zoomAt(s.x, s.y, e.scale / gestureScale);
+    gestureScale = e.scale;
+  });
+  canvas.addEventListener('gestureend', (e) => e.preventDefault());
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const s = local(e);

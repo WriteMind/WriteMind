@@ -326,3 +326,4 @@ button.enso:hover{box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 18%,trans
 .header-right nav #add-image svg{display:none}
 .header-right nav #export-writing{color:var(--muted)}
 .header-right nav #clear-writing svg{display:none}
+.zoom-btn{min-width:30px;font-size:16px!important;padding:6px 8px!important}
