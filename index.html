@@ -14,13 +14,13 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%237f9590' stroke-width='3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
   <!-- Bump ?v= on styles.css and app.js with every change, so browsers never pair a new page with an old cached file. -->
-  <link rel="stylesheet" href="styles.css?v=20261015-1">
+  <link rel="stylesheet" href="styles.css?v=20261015-4">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/turndown/7.1.2/turndown.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" defer></script>
-  <script src="app.js?v=20261015-1" defer></script>
+  <script src="app.js?v=20261015-4" defer></script>
 </head>
 <body class="intro" data-mode="write">
   <header>
@@ -79,6 +79,7 @@
       <button type="button" id="board-redo" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg><span class="sr-only">Redo</span></button>
     </div>
     <div class="board-tools" role="toolbar" aria-label="Whiteboard tools">
+      <div class="tool-row">
       <button type="button" data-tool="select" aria-pressed="false" title="Select and move (V). Drag on empty space to select an area; Shift adds"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M5 3l14 8-6 2-3 6-5-16z"/></svg><span class="sr-only">Select</span></button>
       <button type="button" data-tool="text" aria-pressed="false" title="Markdown text box (X) — supports $math$"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg><span class="sr-only">Text box</span></button>
       <button type="button" data-tool="note" aria-pressed="false" title="Sticky note (N) — pick a color for the note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 4h16v10l-6 6H4z"/><path d="M14 20v-6h6"/></svg><span class="sr-only">Sticky note</span></button>
@@ -97,11 +98,13 @@
       <button type="button" class="swatch" data-color="sage" aria-pressed="false" title="Sage"><span></span></button>
       <button type="button" class="swatch" data-color="rose" aria-pressed="false" title="Rose"><span></span></button>
       <button type="button" class="swatch" data-color="sky" aria-pressed="false" title="Sky"><span></span></button>
+      </div>
+      <div class="tool-row">
       <button type="button" id="board-size" title="Pen size">Fine</button>
       <button type="button" id="board-text-smaller" class="text-size-btn" title="Smaller text (selected text, or new text)">A−</button>
       <button type="button" id="board-text-larger" class="text-size-btn" title="Larger text (selected text, or new text)">A+</button>
       <button type="button" id="board-pressure" aria-pressed="true" title="Pencil pressure: on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 17c3-1 4-6 7-6s3 5 6 5 3-3 5-4"/><path d="M3 17c3-1 4-6 7-6s3 5 6 5 3-3 5-4" stroke-width="4" opacity=".25"/></svg><span class="sr-only">Pencil pressure</span></button>
-      <span class="row-break" aria-hidden="true"></span>
+      <span class="divider" aria-hidden="true"></span>
       <button type="button" id="board-delete" title="Delete selection (Del)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg><span class="sr-only">Delete</span></button>
       <button type="button" id="board-zoom-out" class="zoom-btn" title="Zoom out">−</button>
       <button type="button" id="board-home" title="Center at 100%"><span id="board-zoom">100%</span></button>
@@ -113,6 +116,7 @@
       <label class="sr-only" for="board-backups">Board backups</label>
       <select id="board-backups" title="The board from your last two sessions, and before a Clear" hidden></select>
       <button type="button" id="board-clear" title="Clear the board">Clear</button>
+      </div>
     </div>
     <button id="board-hide" type="button" aria-pressed="false" title="Hide menus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="sr-only">Hide or show board menus</span></button>
     <input id="board-import-file" type="file" class="visually-hidden">
