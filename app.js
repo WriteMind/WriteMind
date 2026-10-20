@@ -1,3 +1,5 @@
+// Zen, a quiet place to write. Copyright (C) the Zen authors.
+// Free software under the GNU GPL, version 2 or later; see LICENSE. Includes code ported from Xournal++.
 'use strict';
 // If anything fails while the page starts (for example Safari mixing a new page with an old cached
 // script), say so on screen instead of silently leaving buttons dead.
@@ -1097,21 +1099,126 @@ const board = (() => {
     const keys = new Set(list.filter((x) => x.k).map((x) => x.k));
     return list.filter((x) => kind(x) !== 'conn' || (keys.has(x.a) && keys.has(x.b)));
   };
-  // Pencil strokes are drawn as one smooth filled outline (perfect-freehand, MIT), which keeps
-  // pressure changes round and even. The stroke being drawn lives on a separate clear layer.
+  // Pencil strokes are drawn as one filled outline: Xournal++'s contour (Natural) or perfect-freehand
+  // (Smooth, MIT). The stroke being drawn lives on a separate clear layer.
   const liveCanvas = document.querySelector('#board-live'), liveCtx = liveCanvas.getContext('2d');
   let getStroke = null;
   import('https://cdn.jsdelivr.net/npm/perfect-freehand@1.2.2/+esm').then((m) => { getStroke = m.getStroke; redraw(); }).catch(() => {});
-  const outlines = new WeakMap();
+  let outlines = new WeakMap();
+
+  // ---------- Natural pen: Xournal++'s pressure contour ----------
+  // Ported from Xournal++ (src/core/model/StrokeContour.cpp, GPL-2.0-or-later, (c) the Xournal++ authors).
+  // Draws exactly the points the pen produced, with no smoothing: each point is a circle whose diameter
+  // follows the pressure, and the outline wraps those circles with round joins and round ends.
+  let penFeel = 'natural';
+  try { if (localStorage.getItem('zen-pen-feel') === 'smooth') penFeel = 'smooth'; } catch {}
+  const outlineReady = () => penFeel === 'natural' || Boolean(getStroke);
+  const minusPiPi = (t) => (t > Math.PI ? t - 2 * Math.PI : t < -Math.PI ? t + 2 * Math.PI : t);
+  // "sink" is a Path2D, or an SVG path builder with the same moveTo/lineTo/arc calls.
+  function chord(sink, cx, cy, r, a1, a2) {
+    sink.lineTo(cx + r * Math.cos(a1), cy + r * Math.sin(a1));
+    sink.lineTo(cx + r * Math.cos(a2), cy + r * Math.sin(a2));
+  }
+  const arc = (sink, cx, cy, r, a1, a2) => sink.arc(cx, cy, r, a1, a2);
+  const hookAfter = (sink, x, y, r, a, b) => { sink.lineTo(x, y); sink.arc(x, y, r, a, b); };
+  const hookBefore = (sink, x, y, r, a, b) => { sink.arc(x, y, r, a, b); sink.lineTo(x, y); };
+  function coupling(sink, ops, p2, n1, n3, a1, a3, z1) {
+    if (z1 < p2.z) {
+      if (.5 * p2.z < n1 || .5 * p2.z <= Math.hypot(.5 * z1, n1)) {
+        const angleIn = Math.asin(z1 / p2.z);
+        const a = minusPiPi(a1 + angleIn), b = minusPiPi(a3 - Math.PI / 2);
+        (minusPiPi(a3 - a1) <= 0 || minusPiPi(b - a) > 0 ? arc : chord)(sink, p2.x, p2.y, .5 * p2.z, a, b);
+        const bp = minusPiPi(a1 - angleIn), ap = minusPiPi(a3 + Math.PI / 2);
+        ops.push([minusPiPi(a3 - a1) >= 0 || minusPiPi(bp - ap) > 0 ? arc : chord, p2.x, p2.y, .5 * p2.z, ap, bp]);
+      } else {
+        sink.lineTo(p2.x, p2.y);
+        sink.arc(p2.x, p2.y, .5 * p2.z, a1, a3 - Math.PI / 2);
+        ops.push([hookBefore, p2.x, p2.y, .5 * p2.z, a3 + Math.PI / 2, a1]);
+      }
+    } else if (.5 * z1 < n3 || .5 * z1 <= Math.hypot(.5 * p2.z, n3)) {
+      const angleOut = Math.asin(p2.z / z1);
+      const a = minusPiPi(a1 + Math.PI / 2), b = minusPiPi(a3 - angleOut);
+      (minusPiPi(a3 - a1) <= 0 || minusPiPi(b - a) > 0 ? arc : chord)(sink, p2.x, p2.y, .5 * z1, a, b);
+      const bp = minusPiPi(a1 - Math.PI / 2), ap = minusPiPi(a3 + angleOut);
+      ops.push([minusPiPi(a3 - a1) >= 0 || minusPiPi(bp - ap) > 0 ? arc : chord, p2.x, p2.y, .5 * z1, ap, bp]);
+    } else {
+      sink.arc(p2.x, p2.y, .5 * z1, a1 + Math.PI / 2, a3);
+      sink.lineTo(p2.x, p2.y);
+      ops.push([hookAfter, p2.x, p2.y, .5 * z1, a3, a1 - Math.PI / 2]);
+    }
+  }
+  // The pen's points with their widths. Repeated samples on the same spot are merged.
+  function contourPoints(it) {
+    const p = it.pts, pr = it.pr, out = [];
+    for (let i = 0; i < p.length; i += 2) {
+      const pt = {x: p[i], y: p[i + 1], z: Math.max(.3, it.w * 1.9 * (.3 + 1.4 * pr[i / 2]))};
+      const last = out[out.length - 1];
+      if (last && Math.hypot(pt.x - last.x, pt.y - last.y) < .25) { last.z = Math.max(last.z, pt.z); continue; }
+      out.push(pt);
+    }
+    return out;
+  }
+  function addContour(sink, it) {
+    const path = contourPoints(it);
+    if (!path.length) return;
+    if (path.length === 1) {
+      const [p] = path;
+      sink.moveTo(p.x + p.z / 2, p.y);
+      sink.arc(p.x, p.y, p.z / 2, 0, 2 * Math.PI);
+      sink.closePath();
+      return;
+    }
+    const angle = (from, to) => Math.atan2(to.y - from.y, to.x - from.x);
+    const first = path[0];
+    let a = angle(first, path[1]);
+    sink.moveTo(first.x + .5 * first.z * Math.cos(a + Math.PI / 2), first.y + .5 * first.z * Math.sin(a + Math.PI / 2));
+    sink.arc(first.x, first.y, .5 * first.z, a + Math.PI / 2, a - Math.PI / 2);
+    const ops = [];
+    for (let i = 1; i < path.length - 1; i++) {
+      const p1 = path[i - 1], p2 = path[i], p3 = path[i + 1];
+      coupling(sink, ops, p2, Math.hypot(p1.x - p2.x, p1.y - p2.y), Math.hypot(p3.x - p2.x, p3.y - p2.y), angle(p2, p1), angle(p2, p3), p1.z);
+    }
+    const end = path[path.length - 1], before = path[path.length - 2];
+    a = angle(end, before);
+    sink.arc(end.x, end.y, .5 * before.z, a + Math.PI / 2, a - Math.PI / 2);
+    for (let i = ops.length - 1; i >= 0; i--) { const [op, ...args] = ops[i]; op(sink, ...args); }
+    sink.closePath();
+  }
+  // Collects the same drawing calls as SVG path text (arcs become short straight runs).
+  function svgSink() {
+    let d = '', open = false;
+    const pt = (x, y) => `${x.toFixed(2)} ${y.toFixed(2)}`;
+    const lineTo = (x, y) => { d += (open ? 'L' : 'M') + pt(x, y); open = true; };
+    return {
+      moveTo(x, y) { d += 'M' + pt(x, y); open = true; },
+      lineTo,
+      arc(cx, cy, r, a1, a2) {
+        let sweep = a2 - a1;
+        while (sweep < 0) sweep += 2 * Math.PI;
+        sweep = Math.min(sweep, 2 * Math.PI);
+        const steps = Math.max(1, Math.ceil(sweep / .35));
+        for (let i = 0; i <= steps; i++) { const t = a1 + sweep * i / steps; lineTo(cx + r * Math.cos(t), cy + r * Math.sin(t)); }
+      },
+      closePath() { d += 'Z'; open = false; },
+      toString: () => d,
+    };
+  }
+
   function outlinePoints(it, last = true) {
     const p = it.pts, pr = it.pr, points = [];
     for (let i = 0; i < p.length; i += 2) points.push([p[i], p[i + 1], pr[i / 2]]);
     return getStroke(points, {size: it.w * 1.9, thinning: .6, smoothing: .6, streamline: .45, simulatePressure: false, last});
   }
   function outlinePath(it) {
-    if (!getStroke) return null;
+    if (!outlineReady()) return null;
     if (it !== current && outlines.has(it)) return outlines.get(it);
-    const pts = outlinePoints(it, it !== current), path = new Path2D();
+    const path = new Path2D();
+    if (penFeel === 'natural') {
+      addContour(path, it);
+      if (it !== current) outlines.set(it, path);
+      return path;
+    }
+    const pts = outlinePoints(it, it !== current);
     if (pts.length) {
       path.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i <= pts.length; i++) {
@@ -1124,6 +1231,7 @@ const board = (() => {
     return path;
   }
   function outlineSVG(it) {
+    if (penFeel === 'natural') { const sink = svgSink(); addContour(sink, it); return String(sink); }
     const pts = outlinePoints(it);
     if (!pts.length) return '';
     let d = `M${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)}`;
@@ -1133,7 +1241,7 @@ const board = (() => {
     }
     return d + 'Z';
   }
-  const onLiveLayer = (it) => Boolean(it?.pr && getStroke);
+  const onLiveLayer = (it) => Boolean(it?.pr && outlineReady());
   function clearLive() { liveCtx.setTransform(1, 0, 0, 1, 0, 0); liveCtx.clearRect(0, 0, liveCanvas.width, liveCanvas.height); }
   function drawLiveLayer() {
     clearLive();
@@ -1143,6 +1251,21 @@ const board = (() => {
     liveCtx.fillStyle = palette()[current.c] || palette().ink;
     liveCtx.fill(outlinePath(current));
   }
+  // Natural (Xournal++ style, exactly as written) or Smooth (rounded off by perfect-freehand).
+  const feelButton = document.querySelector('#pen-feel');
+  const showFeel = () => {
+    feelButton.textContent = penFeel === 'natural' ? 'Natural' : 'Smooth';
+    feelButton.title = `Pen feel: ${penFeel === 'natural' ? 'Natural, exactly as written' : 'Smooth, rounded off'}. Tap to change`;
+  };
+  showFeel();
+  feelButton.addEventListener('click', () => {
+    penFeel = penFeel === 'natural' ? 'smooth' : 'natural';
+    try { localStorage.setItem('zen-pen-feel', penFeel); } catch {}
+    outlines = new WeakMap();
+    showFeel();
+    status.textContent = `Pen feel: ${feelButton.textContent}`;
+    redraw();
+  });
   function resize() {
     const dpr = window.devicePixelRatio || 1;
     canvas.width = liveCanvas.width = Math.round(canvas.clientWidth * dpr);
@@ -1444,7 +1567,7 @@ const board = (() => {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = palette()[stroke.c] || palette().ink;
-    if (stroke.pr && getStroke) { clearLive(); ctx.fillStyle = ctx.strokeStyle; ctx.fill(outlinePath(stroke)); return; }
+    if (stroke.pr && outlineReady()) { clearLive(); ctx.fillStyle = ctx.strokeStyle; ctx.fill(outlinePath(stroke)); return; }
     if (stroke.pr) { drawPressure(ctx, stroke, next / 2, mid, true); return; }
     ctx.lineWidth = stroke.w;
     ctx.beginPath();
@@ -1518,7 +1641,7 @@ const board = (() => {
     items = next;
     selection = selection.map((s) => items.find((x) => x === s || (s.k && x.k === s.k))).filter(Boolean);
     persist();
-    if (live && !frame && !snapView && !selection.length && (live.mid || (live.stroke.pr && getStroke))) {
+    if (live && !frame && !snapView && !selection.length && (live.mid || (live.stroke.pr && outlineReady()))) {
       finishStroke(live.stroke, live.mid, live.next);
       updateButtons();
       dbg('board: items', items.length);
@@ -2088,7 +2211,7 @@ const board = (() => {
         parts.unshift(`<path d="${connSVGPath(g, it.w)}" ${st}/>`);
       } else if (k === 'text') parts.push(textSVG(it));
       else if (k === 'img') parts.push(`<image href="${await loadImage(it.id)}" x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" preserveAspectRatio="none"/>`);
-      else if (k === 's' && it.pr && getStroke) parts.push(`<path d="${outlineSVG(it)}" fill="${col}"/>`);
+      else if (k === 's' && it.pr && outlineReady()) parts.push(`<path d="${outlineSVG(it)}" fill="${col}"/>`);
       else if (k === 's' && it.pr) {
         const p = it.pts, pr = it.pr, n = p.length / 2, segs = [];
         let x = p[0], y = p[1];

@@ -26,3 +26,11 @@ Run `node server.cjs` and open http://localhost:4173.
 ## Troubleshooting
 
 Add `?debug` to the address (for example `https://writemind.github.io/WriteMind/?debug`) to show a small panel with live typing timings and Apple Pencil event counts. Tap the panel to reset the counters.
+
+## License and credits
+
+Zen is free software under the GNU General Public License, version 2 or (at your option) any later version. See [LICENSE](LICENSE).
+
+- The Natural pen's pressure outline is ported from [Xournal++](https://github.com/xournalpp/xournalpp) (`src/core/model/StrokeContour.cpp`, GPL-2.0-or-later, © the Xournal++ authors).
+- The Smooth pen uses [perfect-freehand](https://github.com/steveruizok/perfect-freehand) (MIT).
+- Libraries loaded from CDNs: marked (MIT), DOMPurify (Apache-2.0 / MPL-2.0), Turndown (MIT), KaTeX (MIT).
