@@ -204,6 +204,12 @@ header{transition:opacity .8s ease,visibility .8s}
 .board-text textarea{display:block;width:100%;min-height:48px;resize:none;border:1px dashed var(--accent);border-radius:8px;outline:0;padding:8px 10px;margin:-9px -11px;box-sizing:content-box;background:var(--paper);color:inherit;font:15px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;overflow:hidden}
 .board-text:empty::before{content:"Empty text";color:var(--muted);font-style:italic}
 
+/* ---------- a video playing over its poster ---------- */
+.board-player{position:absolute;pointer-events:auto;background:#000;border-radius:6px;overflow:hidden;box-shadow:0 14px 34px -12px rgba(0,0,0,.5)}
+.board-player iframe{display:block;width:100%;height:100%;border:0}
+.board-player-close{position:absolute;top:8px;right:8px;width:30px;height:30px;border:0;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:20px;line-height:30px;cursor:pointer;opacity:.75}
+.board-player-close:hover,.board-player-close:focus-visible{opacity:1}
+
 /* ---------- sticky notes ---------- */
 :root{--note-ink:#fbf1c7;--note-sage:#dcefe0;--note-rose:#f8dfe2;--note-sky:#dce8f7;--note-text:#2f3133}
 .board-text.note{background:var(--note);color:var(--note-text);padding:16px 18px;min-height:150px;box-sizing:border-box;font-size:18px;line-height:1.55;border-radius:4px 4px 14px 4px;box-shadow:0 1px 2px rgba(0,0,0,.06),0 14px 28px -14px rgba(20,30,40,.35)}

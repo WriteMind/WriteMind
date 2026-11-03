@@ -958,15 +958,17 @@ const board = (() => {
   let spaceHeld = false;
   let saveTimer;
   let frame;
-  // Pointer handling. Once an Apple Pencil (or any stylus) is used, fingers and palms never draw:
-  // one finger does nothing, two fingers pan and zoom, and touches are ignored while the pen is down.
+  // Pointer handling. While an Apple Pencil (or any stylus) is in use, fingers and palms never draw:
+  // one finger selects (Select tool) or pans, two fingers pan and zoom, and touches are ignored while the pen
+  // is down. A minute after the pen was last used, a finger draws again.
   const touches = new Map();
   let activeId = null;
   let activeType = null;
   let lastTap = {};
   let penDown = null;
-  let penSeen = false;
-  try { penSeen = localStorage.getItem('zen-pen') === '1'; } catch {}
+  let penAt = 0, fingerPan = false;
+  const penRecent = () => Date.now() - penAt < 60000;
+  try { localStorage.removeItem('zen-pen'); } catch {}  // the old setting that turned finger drawing off for good
   let liveFrame = null;
   let pressureOn = true;
   try { pressureOn = localStorage.getItem('zen-pressure') !== 'off'; } catch {}
@@ -983,6 +985,7 @@ const board = (() => {
   const textNodes = new Map();
   let pinch = null;
   let panFrom = null;
+  let player = null; // the open video player, if any: {k, node}
 
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const palette = () => ({ink: css('--ink'), sage: css('--sage'), rose: css('--rose'), sky: css('--sky')});
@@ -1335,6 +1338,7 @@ const board = (() => {
       const img = bitmap(it.id);
       if (img.dataset.ready && img.naturalWidth) c.drawImage(img, it.x, it.y, it.w, it.h);
       else { c.fillStyle = css('--grid'); c.fillRect(it.x, it.y, it.w, it.h); }
+      if (it.play) drawPlay(c, it);
       return;
     }
     c.strokeStyle = colors[it.c] || colors.ink;
@@ -1428,6 +1432,7 @@ const board = (() => {
       if (node.dataset.size !== sizeKey || !it.h) { it.h = node.offsetHeight; node.dataset.size = sizeKey; }
     }
     for (const [k, node] of textNodes) if (!seen.has(k)) { node.remove(); textNodes.delete(k); }
+    placePlayer();
   }
   function editText(it) {
     if (editing) finishEditing();
@@ -1713,8 +1718,10 @@ const board = (() => {
     redraw();
   }
   canvas.addEventListener('pointerdown', (e) => {
+    fingerPan = false;
     if (e.pointerType === 'pen') {
-      if (!penSeen) { penSeen = true; dbg('pen mode', 'on'); try { localStorage.setItem('zen-pen', '1'); } catch {} }
+      if (!penRecent()) dbg('pen mode', 'on');
+      penAt = Date.now();
       touches.clear();
       pinch = null;
       // A palm that got there first is discarded; an earlier pen stroke whose lift-off Safari
@@ -1731,7 +1738,7 @@ const board = (() => {
       touches.set(e.pointerId, local(e));
       if (touches.size === 2) { cancelGesture(); startPinch(); return; }
       if (touches.size > 2) return;
-      if (penSeen) { dbg('finger touches ignored'); return; } // with a stylus, one finger never draws
+      if (penRecent() && tool !== 'select') { dbg('finger touches ignored'); fingerPan = true; } // with a stylus in use, one finger pans
     }
     if (activeId != null) return;
     finishEditing();
@@ -1739,7 +1746,7 @@ const board = (() => {
     activeType = e.pointerType;
     try { canvas.setPointerCapture(e.pointerId); } catch {}
     const s = local(e);
-    if (tool === 'hand' || spaceHeld || e.button === 1) { panFrom = s; canvas.classList.add('grabbing'); return; }
+    if (tool === 'hand' || spaceHeld || e.button === 1 || fingerPan) { panFrom = s; canvas.classList.add('grabbing'); return; }
     if (e.button !== 0) return;
     const p = toWorld(s.x, s.y);
     if (tool === 'eraser') { const hit = hitTest(p); if (hit) commit(items.filter((x) => x !== hit)); return; }
@@ -1759,10 +1766,15 @@ const board = (() => {
       // Double-tap a text box or note to edit it (touch screens get no dblclick here).
       if (hit && (kind(hit) === 'text' || labelled(hit)) && lastTap.k === hit.k && e.timeStamp - lastTap.t < 400) { lastTap = {}; activeId = null; editText(hit); return; }
       lastTap = hit ? {k: hit.k, t: e.timeStamp} : {};
+      // Tapping a link note that is already selected opens it (Ctrl/Cmd-click with a mouse); a video plays in place
+      // (Ctrl/Cmd-click opens it on YouTube).
+      const url = hit && linkOf(hit);
+      if (url && (e.ctrlKey || e.metaKey)) { activeId = null; window.open(url, '_blank', 'noopener,noreferrer'); return; }
+      const openOnTap = url && e.pointerType !== 'mouse' && isSelected(hit) && !e.shiftKey ? (hit.play ? hit : url) : '';
       if (hit) {
         if (e.shiftKey) selection = isSelected(hit) ? selection.filter((x) => x !== hit) : [...selection, hit];
         else if (!isSelected(hit)) selection = [hit];
-        drag = {mode: 'move', start: p, origs: [...selection], before: items, moved: false};
+        drag = {mode: 'move', start: p, origs: [...selection], before: items, moved: false, openOnTap};
       } else {
         if (!e.shiftKey) selection = [];
         marquee = {x1: p.x, y1: p.y, x2: p.x, y2: p.y, base: [...selection]};
@@ -1785,9 +1797,15 @@ const board = (() => {
     }
     redraw();
   });
+  // Where a link note (🔗 [title](url)) or a video leads, if anywhere.
+  function linkOf(it) {
+    if (it.play) return watchURL(it.play);
+    return (kind(it) === 'text' && /^\s*🔗/.test(it.md || '') && it.md.match(/\]\((https?:\/\/[^)\s]+)\)/)?.[1]) || '';
+  }
   canvas.addEventListener('dblclick', (e) => {
     const s = local(e), hit = hitTest(toWorld(s.x, s.y));
-    if (hit && (kind(hit) === 'text' || labelled(hit))) editText(hit);
+    if (hit?.play) openPlayer(hit);
+    else if (hit && (kind(hit) === 'text' || labelled(hit))) editText(hit);
     else if (tool === 'select' && !hit) { setTool('text'); }
   });
   canvas.addEventListener('pointermove', (e) => {
@@ -1881,6 +1899,8 @@ const board = (() => {
     if (marquee) { marquee = null; redraw(); }
     if (drag) {
       if (drag.moved) { past.push(drag.before); future = []; persist(); }
+      else if (drag.openOnTap?.play) openPlayer(drag.openOnTap);
+      else if (drag.openOnTap) window.open(drag.openOnTap, '_blank', 'noopener,noreferrer');
       drag = null;
       redraw();
     }
@@ -1910,7 +1930,7 @@ const board = (() => {
     if (e.cancelable) { e.preventDefault(); dbg('touch events blocked'); }
   }, {passive: false}));
   if (debugOn) {
-    dbg('pen mode', penSeen ? 'on' : 'off until the Pencil draws once');
+    dbg('pen mode', 'off until the Pencil draws');
     let moves = 0, since = performance.now();
     canvas.addEventListener('pointerdown', (e) => dbg(`${e.pointerType} down`), true);
     canvas.addEventListener('pointerup', (e) => dbg(`${e.pointerType} up`), true);
@@ -1971,12 +1991,168 @@ const board = (() => {
     status.textContent = 'Picture added — drag to move, corner to resize';
   }
   document.querySelector('#board-image').addEventListener('click', () => document.querySelector('#board-image-file').click());
-  document.querySelector('#board-image-file').addEventListener('change', (e) => { addImages(e.target.files); e.target.value = ''; });
+  // Pictures go on the board, a PDF as a picture of its first page.
+  document.querySelector('#board-image-file').addEventListener('change', (e) => {
+    const files = [...e.target.files], at = toWorld(canvas.clientWidth / 2, canvas.clientHeight / 2);
+    addImages(files, at); addVideos(files.filter(isVideo)); addFiles(files.filter((f) => !isImage(f) && !isVideo(f)), at);
+    e.target.value = '';
+  });
   canvas.addEventListener('dragover', (e) => e.preventDefault());
-  canvas.addEventListener('drop', (e) => { e.preventDefault(); const s = local(e); addImages(e.dataTransfer.files, toWorld(s.x, s.y)); });
+  canvas.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const s = local(e), at = toWorld(s.x, s.y);
+    const dt = e.dataTransfer;
+    if (dt.files.length) {
+      addImages(dt.files, at);
+      addVideos([...dt.files].filter(isVideo));
+      addFiles([...dt.files].filter((f) => !isImage(f) && !isVideo(f)), at);
+      return;
+    }
+    // Not a file: a link, a picture from a web page, or text dragged from anywhere.
+    const link = (dt.getData('text/uri-list') || '').split('\n').map((l) => l.trim()).find((l) => /^https?:\/\//.test(l));
+    const text = dt.getData('text/plain');
+    if (link) dropLink(link, text, at);
+    else if (text && text.trim()) commit([...items, {t: 'text', k: newKey(), x: at.x - 170, y: at.y, w: 340, md: text, c: color}]);
+  });
+  async function dropLink(url, text, at) {
+    // A YouTube video becomes a player; a picture is copied onto the board when its site allows it; anything else
+    // becomes a link note.
+    if (youtubeOf(url)) return addYouTube(url, text, at);
+    if (/\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(url)) {
+      try {
+        const r = await fetch(url);
+        const blob = r.ok ? await r.blob() : null;
+        if (blob && blob.type.startsWith('image/')) return addImages([new File([blob], url.split('/').pop().split('?')[0] || 'picture', {type: blob.type})], at);
+      } catch {}
+    }
+    const title = (text && text.trim() && text.trim() !== url ? text.trim() : new URL(url).hostname).replace(/[[\]]/g, '');
+    setTool('select');
+    commit([...items, {t: 'text', note: true, k: newKey(), x: at.x - 120, y: at.y, w: 240, md: `🔗 [${title}](${url})`, c: 'sky'}]);
+    status.textContent = 'Link added to the board';
+  }
+  // Videos: a picture item (the video's poster, so it moves, resizes, connects and saves like any picture) with
+  // play: {yt: id, start} for a YouTube video. Opening it puts the player over the poster, in the layer that follows
+  // the board as it pans and zooms.
+  const isVideo = (f) => /^video\//.test(f.type) || /\.(mp4|m4v|mov|webm|mkv|avi|ogv)$/i.test(f.name);
+  const youtubeOf = (url) => url.match(/^https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^\s#]*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/)?.[1];
+  function startOf(url) {  // ?t=90, ?t=1m30s or ?start=90, in seconds
+    try {
+      const t = new URL(url).searchParams.get('t') || new URL(url).searchParams.get('start') || '';
+      const m = t.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/);
+      return m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0;
+    } catch { return 0; }
+  }
+  function playOf(p) {  // a checked play field, or null
+    return p && /^[\w-]{11}$/.test(p.yt) ? {yt: p.yt, ...(Number.isInteger(p.start) && p.start > 0 ? {start: p.start} : {})} : null;
+  }
+  const playerURL = (p) => `https://www.youtube-nocookie.com/embed/${p.yt}?autoplay=1&rel=0${p.start ? '&start=' + p.start : ''}`;
+  const watchURL = (p) => `https://www.youtube.com/watch?v=${p.yt}${p.start ? '&t=' + p.start + 's' : ''}`;
+  // A 16:9 poster: a frame or thumbnail when there is one, else the title on a dark card.
+  async function posterOf(source, title, where) {
+    const c = Object.assign(document.createElement('canvas'), {width: 640, height: 360}), g = c.getContext('2d');
+    g.fillStyle = '#1f2328'; g.fillRect(0, 0, 640, 360);
+    if (source) {
+      const w = source.videoWidth || source.width, h = source.videoHeight || source.height;
+      // YouTube's hqdefault thumbnail is 4:3 with black bands above and below a 16:9 picture: those are cut off.
+      const band = source.width && Math.abs(w / h - 4 / 3) < .01 ? (h - w * 9 / 16) / 2 : 0;
+      const sh = h - band * 2, k = Math.max(640 / w, 360 / sh);
+      g.drawImage(source, 0, band, w, sh, (640 - w * k) / 2, (360 - sh * k) / 2, w * k, sh * k);
+    } else {
+      g.fillStyle = '#e8e6e1'; g.font = '600 30px system-ui, sans-serif';
+      const words = String(title).split(/\s+/), lines = [''];
+      for (const w of words) { const t = (lines.at(-1) + ' ' + w).trim(); if (g.measureText(t).width > 560 && lines.at(-1)) lines.push(w); else lines[lines.length - 1] = t; }
+      lines.slice(0, 3).forEach((l, i) => g.fillText(l, 40, 70 + i * 42));
+      g.fillStyle = '#9aa0a6'; g.font = '22px system-ui, sans-serif'; g.fillText(where, 40, 320);
+    }
+    return new Promise((r) => c.toBlob(r, 'image/jpeg', .85));
+  }
+  async function addVideoItem(posterBlob, play, at, done) {
+    const id = await storeImage(posterBlob);
+    const w = 480 / view.z, h = w * 9 / 16;
+    const it = {t: 'img', k: newKey(), id, x: at.x - w / 2, y: at.y - h / 2, w, h, play};
+    setTool('select');
+    commit([...items, it]);
+    selection = [it];
+    redraw();
+    status.textContent = done + ' — double-click (or tap it once selected) to play';
+  }
+  async function addYouTube(url, title, at) {
+    const yt = youtubeOf(url), start = startOf(url);
+    status.textContent = 'Adding the YouTube video…';
+    let thumb = null;
+    try {
+      const r = await fetch(`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`);
+      if (r.ok) thumb = await createImageBitmap(await r.blob());
+    } catch {}
+    await addVideoItem(await posterOf(thumb, title && title.trim() !== url ? title.trim() : 'YouTube video', 'YouTube'), {yt, ...(start ? {start} : {})}, at, 'YouTube video added');
+  }
+  // A video file has nowhere to live here (the board keeps only pictures), so it is pointed at YouTube instead.
+  function addVideos(files) {
+    if (files.length) status.textContent = files.map((f) => f.name).join(', ') + ': video files cannot go on the board; drop or paste a YouTube link instead';
+  }
+  // The player over a video's poster; one at a time. × or Escape closes it, and it goes when the video does.
+  function openPlayer(it) {
+    closePlayer();
+    const node = document.createElement('div');
+    node.className = 'board-player';
+    node.innerHTML = `<iframe src="${playerURL(it.play)}" title="Video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`
+      + '<button type="button" class="board-player-close" title="Close the video (Esc)" aria-label="Close the video">×</button>';
+    node.querySelector('button').addEventListener('click', closePlayer);
+    layer.append(node);
+    player = {k: it.k, node};
+    placePlayer();
+  }
+  function placePlayer() {
+    if (!player) return;
+    const it = byKey(player.k);
+    if (!it?.play || document.body.dataset.mode !== 'board') { closePlayer(); return; }
+    Object.assign(player.node.style, {left: `${it.x}px`, top: `${it.y}px`, width: `${it.w}px`, height: `${it.h}px`});
+  }
+  function closePlayer() { player?.node.remove(); player = null; }
+  function drawPlay(c, it) {  // the ▶ badge on a video's poster
+    const r = Math.max(8, Math.min(it.w, it.h) * .12), cx = it.x + it.w / 2, cy = it.y + it.h / 2;
+    c.fillStyle = 'rgba(0,0,0,.6)';
+    c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#fff';
+    c.beginPath(); c.moveTo(cx - r * .35, cy - r * .5); c.lineTo(cx + r * .55, cy); c.lineTo(cx - r * .35, cy + r * .5); c.closePath(); c.fill();
+  }
+  async function pdfCover(file) {
+    // pdf.js 4 is a JavaScript module, loaded only when a PDF is first added.
+    const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+    const page = await (await pdfjsLib.getDocument({data: await file.arrayBuffer(), isEvalSupported: false}).promise).getPage(1);
+    const vp = page.getViewport({scale: 1.2});
+    const c = Object.assign(document.createElement('canvas'), {width: vp.width, height: vp.height});
+    await page.render({canvasContext: c.getContext('2d'), viewport: vp}).promise;
+    return new Promise((r) => c.toBlob(r, 'image/jpeg', .85));
+  }
+  // A PDF goes on the board as a picture of its first page; other files have nowhere to live here.
+  async function addFiles(files, at) {
+    for (const [i, file] of files.entries()) {
+      if (!(/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name))) { status.textContent = file.name + ': only pictures, PDFs and links go on the board'; continue; }
+      status.textContent = 'Adding the first page of ' + file.name + '…';
+      try {
+        const id = await storeImage(await pdfCover(file));
+        setTool('select');
+        commit([...items, {t: 'img', k: newKey(), id, x: at.x + i * 30 / view.z, y: at.y + i * 30 / view.z, w: 240, h: 310}]);
+        status.textContent = file.name + ': its first page is on the board';
+      } catch (error) { status.textContent = 'Could not add ' + file.name + ': ' + error.message; }
+    }
+  }
 
   // Copy, paste and duplicate within the board.
-  let clipboard = [];
+  let clipboard = [], clipText = '';
+  // Copying board items also puts their words on the system clipboard; a paste uses the board items only while
+  // the system clipboard still holds those words, so text copied from another app afterwards pastes as text.
+  const copyItems = (e) => {
+    if (document.body.dataset.mode !== 'board' || editing || !selection.length || e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+    clipboard = [...selection];
+    clipText = selection.map((it) => (kind(it) === 'text' ? it.md : it.label || '')).filter((t) => t && t.trim()).join('\n\n') || 'Zen board items';
+    try { e.clipboardData.setData('text/plain', clipText); e.preventDefault(); } catch {}
+    if (e.type === 'cut') deleteSelection();
+  };
+  document.addEventListener('copy', copyItems);
+  document.addEventListener('cut', copyItems);
   const cloneItems = (list, offset) => {
     const keys = new Map(list.filter((it) => it.k).map((it) => [it.k, newKey()]));
     return list
@@ -1993,13 +2169,15 @@ const board = (() => {
   document.addEventListener('paste', (e) => {
     if (document.body.dataset.mode !== 'board' || editing || e.target.closest('input, textarea, select')) return;
     const files = [...(e.clipboardData?.files || [])];
-    if (files.some(isImage)) { e.preventDefault(); addImages(files); return; }
+    if (files.length) { e.preventDefault(); const at = toWorld(canvas.clientWidth / 2, canvas.clientHeight / 2); addImages(files, at); addVideos(files.filter(isVideo)); addFiles(files.filter((f) => !isImage(f) && !isVideo(f)), at); return; }
     const text = e.clipboardData?.getData('text/plain');
-    if (text && !clipboard.length) {
+    const internal = clipboard.length && (!text || text === clipText);
+    if (text && !internal) {
       e.preventDefault();
       const p = toWorld(canvas.clientWidth / 2, canvas.clientHeight / 2);
+      if (youtubeOf(text.trim()) && !/\s/.test(text.trim())) { addYouTube(text.trim(), '', p); return; }  // a pasted YouTube link plays
       commit([...items, {t: 'text', k: newKey(), x: p.x - 170, y: p.y, w: 340, md: text, c: color}]);
-    } else if (clipboard.length) { e.preventDefault(); pasteItems(clipboard); }
+    } else if (internal) { e.preventDefault(); pasteItems(clipboard); }
   });
 
   function setTool(t) {
@@ -2177,7 +2355,8 @@ const board = (() => {
   }
   async function toCanvas(richText = true) {
     await readyImages();
-    const e = extent(), scale = Math.min(2, 8000 / Math.max(e.w, e.h));
+    // Kept inside what the browser can draw: iPad Safari gives up on canvases over about 16 million pixels.
+    const e = extent(), scale = Math.min(2, 8000 / Math.max(e.w, e.h), Math.sqrt((isAppleTouch ? 16e6 : 6e7) / Math.max(1, e.w * e.h)));
     const out = document.createElement('canvas');
     out.width = Math.ceil(e.w * scale);
     out.height = Math.ceil(e.h * scale);
@@ -2247,7 +2426,12 @@ const board = (() => {
     finishEditing();
     if (!items.length) { status.textContent = 'The board is empty'; return; }
     try {
-      if (k === 'png' || k === 'jpg') (await toCanvas()).toBlob((b) => download(b, `zen-board.${k}`), k === 'png' ? 'image/png' : 'image/jpeg', .92);
+      if (k === 'png' || k === 'jpg') {
+        const out = await toCanvas();
+        const blob = await new Promise((resolve) => out.toBlob(resolve, k === 'png' ? 'image/png' : 'image/jpeg', .92));
+        if (!blob) { notify('The board is too big to export as a picture here; try SVG, or export a smaller part'); return; }
+        download(blob, `zen-board.${k}`);
+      }
       if (k === 'svg') download(new Blob([await toSVG()], {type: 'image/svg+xml'}), 'zen-board.svg');
       if (k === 'pdf') {
         const url = (await toCanvas()).toDataURL('image/png');
@@ -2283,7 +2467,7 @@ const board = (() => {
           if (typeof raw.src === 'string' && /^data:image\//.test(raw.src)) id = await storeImage(await (await fetch(raw.src)).blob());
           else if (typeof raw.id === 'string' && await loadImage(raw.id)) id = raw.id;
         } catch {}
-        if (id) next.push({t: 'img', k: key, id, x: raw.x, y: raw.y, w: raw.w, h: raw.h});
+        if (id) next.push({t: 'img', k: key, id, x: raw.x, y: raw.y, w: raw.w, h: raw.h, ...(playOf(raw.play) ? {play: playOf(raw.play)} : {})});
       }
     }
     for (const raw of list) {
@@ -2312,13 +2496,12 @@ const board = (() => {
     if (mod && key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (mod && key === 'y') { e.preventDefault(); redo(); return; }
     if (mod && key === 'a') { e.preventDefault(); setTool('select'); selection = [...items]; redraw(); return; }
-    if (mod && key === 'c' && selection.length) { clipboard = [...selection]; return; }
-    if (mod && key === 'x' && selection.length) { clipboard = [...selection]; deleteSelection(); return; }
     if (mod && key === 'd' && selection.length) { e.preventDefault(); pasteItems(selection); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length) { e.preventDefault(); deleteSelection(); return; }
+    if (e.key === 'Escape' && player) { closePlayer(); return; }
     if (e.key === 'Escape' && selection.length) { selection = []; redraw(); return; }
     if (e.key === 'Enter' && selection.length === 1 && (kind(selection[0]) === 'text' || labelled(selection[0]))) { e.preventDefault(); editText(selection[0]); return; }
-    if (e.key === ' ' && !spaceHeld) { spaceHeld = true; canvas.classList.add('panning'); e.preventDefault(); }
+    if (e.key === ' ' && !spaceHeld && !e.target.closest('button, label, [role="button"], a')) { spaceHeld = true; canvas.classList.add('panning'); e.preventDefault(); }
     const keys = {p: 'pen', e: 'eraser', h: 'hand', v: 'select', r: 'rect', o: 'ellipse', t: 'triangle', l: 'line', a: 'arrow', x: 'text', n: 'note', c: 'connect'};
     if (!mod && !e.altKey && keys[key]) setTool(keys[key]);
   });
